@@ -151,14 +151,18 @@ def pdf_endpoint():
         else:
             temp_width, temp_height = img_width, img_height
         
-        # Calcular escala para que la imagen quepa manteniendo proporción
-        scale = min(width / temp_width, height / temp_height)
+        # Calcular el área disponible dentro del marco (respetando márgenes)
+        available_width = width - (2 * margin)
+        available_height = height - (2 * margin) - banner_height  # Restar espacio del banner
+        
+        # Calcular escala para que la imagen quepa dentro del marco manteniendo proporción
+        scale = min(available_width / temp_width, available_height / temp_height)
         new_width = temp_width * scale
         new_height = temp_height * scale
         
-        # Centrar la imagen en toda la página
-        x = (width - new_width) / 2
-        y = (height - new_height) / 2
+        # Centrar la imagen dentro del área disponible del marco
+        x = margin + (available_width - new_width) / 2
+        y = margin + (available_height - new_height) / 2
         
         if rotate_image:
             # Rotar la imagen 90 grados en sentido horario
