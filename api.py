@@ -136,32 +136,14 @@ def pdf_endpoint():
         # Definir márgenes para el marco
         margin = 30
         
-        # Dibujar marco negro con márgenes
-        frame_width = 4
-        c.setStrokeColor(black_color)
-        c.setLineWidth(frame_width)
-        c.rect(margin, margin, width-(2*margin), height-(2*margin), stroke=1, fill=0)
-        
-        # Dibujar banner naranja en la parte superior
-        banner_height = 60
-        c.setFillColor(orange_color)
-        c.rect(0, height - banner_height, width, banner_height, stroke=0, fill=1)
-        
-        # Texto "PLANO PROPUESTO" en blanco (más pequeño)
-        c.setFillColor(white_color)
-        c.setFont("Helvetica-Bold", 18)
-        text_width = c.stringWidth("PLANO PROPUESTO", "Helvetica-Bold", 18)
-        text_x = (width - text_width) / 2
-        text_y = height - banner_height + 25
-        c.drawString(text_x, text_y, "PLANO PROPUESTO")
-        
-        # Insertar imagen centrada en el espacio restante
+        # Insertar imagen centrada ocupando toda la página (bajo el banner)
         img = ImageReader(BytesIO(image_data))
         img_width, img_height = img.getSize()
         
-        # Calcular espacio disponible (restando banner y márgenes)
-        available_width = width - 40  # márgenes laterales
-        available_height = height - banner_height - 60  # banner + márgenes
+        # Calcular espacio disponible (restando solo el banner)
+        banner_height = 60
+        available_width = width
+        available_height = height - banner_height
         
         # Calcular escala para que la imagen quepa manteniendo proporción
         scale = min(available_width / img_width, available_height / img_height)
@@ -173,6 +155,24 @@ def pdf_endpoint():
         y = (height - banner_height - new_height) / 2
         
         c.drawImage(img, x, y, width=new_width, height=new_height)
+        
+        # Dibujar banner naranja en la parte superior (sobre la imagen)
+        c.setFillColor(orange_color)
+        c.rect(0, height - banner_height, width, banner_height, stroke=0, fill=1)
+        
+        # Texto "PLANO PROPUESTO" en blanco (ajustado al marco)
+        c.setFillColor(white_color)
+        c.setFont("Helvetica-Bold", 18)
+        text_width = c.stringWidth("PLANO PROPUESTO", "Helvetica-Bold", 18)
+        text_x = (width - text_width) / 2
+        text_y = height - banner_height + 25
+        c.drawString(text_x, text_y, "PLANO PROPUESTO")
+        
+        # Dibujar marco negro fino sobre la imagen
+        frame_width = 1
+        c.setStrokeColor(black_color)
+        c.setLineWidth(frame_width)
+        c.rect(margin, margin, width-(2*margin), height-(2*margin), stroke=1, fill=0)
         c.save()
         
         # Obtener la nueva página como PDF
