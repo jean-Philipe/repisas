@@ -141,22 +141,30 @@ def pdf_endpoint():
         img = ImageReader(BytesIO(image_data))
         img_width, img_height = img.getSize()
         
-        # Determinar si necesitamos rotar la imagen
-        # Si la imagen es más alta que ancha, la rotamos 90 grados
-        rotate_image = img_height > img_width
-        
-        if rotate_image:
-            # Intercambiar dimensiones para la imagen rotada
-            temp_width, temp_height = img_height, img_width
-        else:
-            temp_width, temp_height = img_width, img_height
-        
         # Calcular el área disponible dentro del marco (respetando márgenes)
         available_width = width - (2 * margin)
         available_height = height - (2 * margin) - banner_height  # Restar espacio del banner
         
-        # Calcular escala para que la imagen quepa dentro del marco manteniendo proporción
-        scale = min(available_width / temp_width, available_height / temp_height)
+        # Calcular qué orientación permite una imagen más grande
+        # Opción 1: Sin rotar
+        scale_normal = min(available_width / img_width, available_height / img_height)
+        area_normal = (img_width * scale_normal) * (img_height * scale_normal)
+        
+        # Opción 2: Rotando 90 grados (intercambiar dimensiones)
+        scale_rotated = min(available_width / img_height, available_height / img_width)
+        area_rotated = (img_height * scale_rotated) * (img_width * scale_rotated)
+        
+        # Elegir la orientación que resulte en mayor área (imagen más grande)
+        rotate_image = area_rotated > area_normal
+        
+        if rotate_image:
+            # Usar dimensiones rotadas
+            temp_width, temp_height = img_height, img_width
+            scale = scale_rotated
+        else:
+            # Usar dimensiones originales
+            temp_width, temp_height = img_width, img_height
+            scale = scale_normal
         new_width = temp_width * scale
         new_height = temp_height * scale
         
