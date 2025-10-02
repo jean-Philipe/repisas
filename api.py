@@ -129,27 +129,30 @@ def pdf_endpoint():
         width, height = A4
         
         # Definir colores
-        orange_color = (1.0, 0.5, 0.0)  # RGB para naranja
-        black_color = (0.0, 0.0, 0.0)   # RGB para negro
-        white_color = (1.0, 1.0, 1.0)   # RGB para blanco
+        orange_color = (1.0, 0.576, 0.118)  # RGB para #ff931e
+        black_color = (0.0, 0.0, 0.0)       # RGB para negro
+        white_color = (1.0, 1.0, 1.0)       # RGB para blanco
         
-        # Dibujar marco negro
+        # Definir márgenes para el marco
+        margin = 30
+        
+        # Dibujar marco negro con márgenes
         frame_width = 4
         c.setStrokeColor(black_color)
         c.setLineWidth(frame_width)
-        c.rect(frame_width/2, frame_width/2, width-frame_width, height-frame_width, stroke=1, fill=0)
+        c.rect(margin, margin, width-(2*margin), height-(2*margin), stroke=1, fill=0)
         
         # Dibujar banner naranja en la parte superior
         banner_height = 60
         c.setFillColor(orange_color)
         c.rect(0, height - banner_height, width, banner_height, stroke=0, fill=1)
         
-        # Texto "PLANO PROPUESTO" en blanco
+        # Texto "PLANO PROPUESTO" en blanco (más pequeño)
         c.setFillColor(white_color)
-        c.setFont("Helvetica-Bold", 24)
-        text_width = c.stringWidth("PLANO PROPUESTO", "Helvetica-Bold", 24)
+        c.setFont("Helvetica-Bold", 18)
+        text_width = c.stringWidth("PLANO PROPUESTO", "Helvetica-Bold", 18)
         text_x = (width - text_width) / 2
-        text_y = height - banner_height + 20
+        text_y = height - banner_height + 25
         c.drawString(text_x, text_y, "PLANO PROPUESTO")
         
         # Insertar imagen centrada en el espacio restante
