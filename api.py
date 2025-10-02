@@ -135,37 +135,34 @@ def pdf_endpoint():
         
         # Definir márgenes para el marco
         margin = 30
+        banner_height = 60
         
-        # Insertar imagen centrada ocupando toda la página (bajo el banner)
+        # Insertar imagen centrada ocupando toda la página
         img = ImageReader(BytesIO(image_data))
         img_width, img_height = img.getSize()
         
-        # Calcular espacio disponible (restando solo el banner)
-        banner_height = 60
-        available_width = width
-        available_height = height - banner_height
-        
         # Calcular escala para que la imagen quepa manteniendo proporción
-        scale = min(available_width / img_width, available_height / img_height)
+        scale = min(width / img_width, height / img_height)
         new_width = img_width * scale
         new_height = img_height * scale
         
-        # Centrar la imagen en el espacio disponible
+        # Centrar la imagen en toda la página
         x = (width - new_width) / 2
-        y = (height - banner_height - new_height) / 2
+        y = (height - new_height) / 2
         
         c.drawImage(img, x, y, width=new_width, height=new_height)
         
-        # Dibujar banner naranja en la parte superior (sobre la imagen)
+        # Dibujar banner naranja dentro del marco (desde el tope del marco)
+        banner_y = height - margin - banner_height
         c.setFillColor(orange_color)
-        c.rect(0, height - banner_height, width, banner_height, stroke=0, fill=1)
+        c.rect(margin, banner_y, width-(2*margin), banner_height, stroke=0, fill=1)
         
-        # Texto "PLANO PROPUESTO" en blanco (ajustado al marco)
+        # Texto "PLANO PROPUESTO" en blanco (centrado en el banner)
         c.setFillColor(white_color)
         c.setFont("Helvetica-Bold", 18)
         text_width = c.stringWidth("PLANO PROPUESTO", "Helvetica-Bold", 18)
         text_x = (width - text_width) / 2
-        text_y = height - banner_height + 25
+        text_y = banner_y + 25
         c.drawString(text_x, text_y, "PLANO PROPUESTO")
         
         # Dibujar marco negro fino sobre la imagen
