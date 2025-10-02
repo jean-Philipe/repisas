@@ -174,11 +174,15 @@ def pdf_endpoint():
         
         if rotate_image:
             # Rotar la imagen 90 grados en sentido horario
-            c.save()
+            # Guardar el estado actual del canvas
+            c.saveState()
+            # Mover el punto de origen y rotar
             c.translate(x + new_width, y)
             c.rotate(90)
+            # Dibujar la imagen en la nueva posición rotada
             c.drawImage(img, 0, -new_height, width=new_width, height=new_height)
-            c.restore()
+            # Restaurar el estado anterior del canvas
+            c.restoreState()
         else:
             c.drawImage(img, x, y, width=new_width, height=new_height)
         
