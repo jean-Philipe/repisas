@@ -141,16 +141,34 @@ def pdf_endpoint():
         img = ImageReader(BytesIO(image_data))
         img_width, img_height = img.getSize()
         
+        # Determinar si necesitamos rotar la imagen
+        # Si la imagen es más alta que ancha, la rotamos 90 grados
+        rotate_image = img_height > img_width
+        
+        if rotate_image:
+            # Intercambiar dimensiones para la imagen rotada
+            temp_width, temp_height = img_height, img_width
+        else:
+            temp_width, temp_height = img_width, img_height
+        
         # Calcular escala para que la imagen quepa manteniendo proporción
-        scale = min(width / img_width, height / img_height)
-        new_width = img_width * scale
-        new_height = img_height * scale
+        scale = min(width / temp_width, height / temp_height)
+        new_width = temp_width * scale
+        new_height = temp_height * scale
         
         # Centrar la imagen en toda la página
         x = (width - new_width) / 2
         y = (height - new_height) / 2
         
-        c.drawImage(img, x, y, width=new_width, height=new_height)
+        if rotate_image:
+            # Rotar la imagen 90 grados en sentido horario
+            c.save()
+            c.translate(x + new_width, y)
+            c.rotate(90)
+            c.drawImage(img, 0, -new_height, width=new_width, height=new_height)
+            c.restore()
+        else:
+            c.drawImage(img, x, y, width=new_width, height=new_height)
         
         # Dibujar banner naranja dentro del marco (desde el tope del marco)
         banner_y = height - margin - banner_height
