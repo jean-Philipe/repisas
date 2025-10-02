@@ -2,21 +2,49 @@ from typing import Dict
 
 
 def render_svg(input_data: Dict, result: Dict) -> str:
-    # Basic SVG scene matching proportions of draw.js
-    inner_w, inner_h, pad = 820, 620, 40
     A = float(input_data["A"]) ; B = float(input_data["B"]) ; E = float(input_data["E"]) 
     base_w = A
     base_h = max(B, E)
-    W = inner_w - 2*pad
-    H = inner_h - 2*pad
-    sx = W / base_w
-    sy = H / base_h
-    s = min(sx, sy)
-
+    
+    # Calcular el espacio necesario para las etiquetas
+    def calculate_text_width(text: str, font_size: int = 12) -> float:
+        # Aproximación del ancho del texto (1px por carácter es conservador)
+        return len(text) * font_size * 0.6
+    
+    # Espacios necesarios para etiquetas de muros
+    label_a_width = calculate_text_width(f"A ({A} cm)")
+    label_b_width = calculate_text_width(f"B ({B} cm)")
+    label_e_width = calculate_text_width(f"E ({E} cm)")
+    
+    # Margen mínimo para etiquetas (izquierda, derecha, arriba, abajo)
+    margin_left = max(15, label_e_width + 5)
+    margin_right = max(15, label_b_width + 5)
+    margin_top = 25  # espacio para etiqueta A
+    margin_bottom = 35  # espacio para leyenda
+    
+    # Calcular dimensiones del canvas necesario
+    min_canvas_w = base_w + margin_left + margin_right
+    min_canvas_h = base_h + margin_top + margin_bottom
+    
+    # Establecer un tamaño mínimo y escalar si es necesario
+    min_size = 600
+    scale_factor = max(min_size / min_canvas_w, min_size / min_canvas_h, 1.0)
+    
+    canvas_w = min_canvas_w * scale_factor
+    canvas_h = min_canvas_h * scale_factor
+    
+    # Recalcular escala para el contenido
+    available_w = canvas_w - margin_left - margin_right
+    available_h = canvas_h - margin_top - margin_bottom
+    s = min(available_w / base_w, available_h / base_h)
+    
+    # Dimensiones del cuarto escalado
     w = base_w * s
     h = base_h * s
-    x0 = (inner_w - w)/2
-    y0 = (inner_h - h)/2
+    
+    # Posición centrada con márgenes
+    x0 = margin_left + (available_w - w) / 2
+    y0 = margin_top + (available_h - h) / 2
 
     def per_wall(wall: str) -> float:
         return sum(p["length"] for p in result["plan"] if p["wall"] == wall)
@@ -35,7 +63,7 @@ def render_svg(input_data: Dict, result: Dict) -> str:
 
     parts = []
     parts.append(
-        f'<svg viewBox="0 0 {inner_w} {inner_h}" width="900" height="680"\n'
+        f'<svg viewBox="0 0 {canvas_w} {canvas_h}" width="{canvas_w}" height="{canvas_h}"\n'
         f'     xmlns="http://www.w3.org/2000/svg" text-rendering="optimizeLegibility">'
     )
     # Inline styles to ensure crisp, black typography
