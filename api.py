@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, Response
+import cairosvg
 from api_domain import plan_shelves_py
 from api_draw import render_svg
 
@@ -75,8 +76,10 @@ def render_endpoint():
         if not result.get('ok'):
             return jsonify({'ok': False, 'error': result.get('error', 'Error desconocido')}), 422
 
+    # Render SVG y convertir a PNG preservando transparencias y colores
     svg = render_svg(input_data, result)
-    return Response(svg, mimetype='image/svg+xml')
+    png_bytes = cairosvg.svg2png(bytestring=svg.encode('utf-8'))
+    return Response(png_bytes, mimetype='image/png')
 
 
 if __name__ == '__main__':
