@@ -2,6 +2,11 @@ from flask import Flask, request, jsonify, Response
 import cairosvg
 from api_domain import plan_shelves_py
 from api_draw import render_svg
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.utils import ImageReader
+from PyPDF2 import PdfReader, PdfWriter
+from io import BytesIO
 
 app = Flask(__name__)
 
@@ -96,6 +101,80 @@ def render_endpoint():
         return Response(png_bytes, mimetype='image/png')
     except Exception as e:
         return jsonify({'ok': False, 'error': f'Error generando imagen: {str(e)}'}), 500
+
+
+@app.post('/pdf')
+def pdf_endpoint():
+    try:
+        # Verificar que se enviaron los archivos
+        if 'image' not in request.files or 'pdf' not in request.files:
+            return jsonify({'ok': False, 'error': 'Se requieren archivos "image" (PNG) y "pdf"'}), 400
+        
+        image_file = request.files['image']
+        pdf_file = request.files['pdf']
+        
+        if image_file.filename == '' or pdf_file.filename == '':
+            return jsonify({'ok': False, 'error': 'Archivos no seleccionados'}), 400
+        
+        # Leer archivos
+        image_data = image_file.read()
+        pdf_data = pdf_file.read()
+        
+        if not image_data or not pdf_data:
+            return jsonify({'ok': False, 'error': 'Archivos vacíos'}), 400
+        
+        # Crear nueva página con la imagen
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        
+        # Insertar imagen centrada en la página
+        img = ImageReader(BytesIO(image_data))
+        img_width, img_height = img.getSize()
+        
+        # Calcular escala para que la imagen quepa en la página manteniendo proporción
+        scale = min(width * 0.8 / img_width, height * 0.8 / img_height)
+        new_width = img_width * scale
+        new_height = img_height * scale
+        
+        # Centrar la imagen
+        x = (width - new_width) / 2
+        y = (height - new_height) / 2
+        
+        c.drawImage(img, x, y, width=new_width, height=new_height)
+        c.save()
+        
+        # Obtener la nueva página como PDF
+        new_page_data = buffer.getvalue()
+        buffer.close()
+        
+        # Leer PDF original
+        pdf_reader = PdfReader(BytesIO(pdf_data))
+        pdf_writer = PdfWriter()
+        
+        # Agregar primera página
+        if len(pdf_reader.pages) > 0:
+            pdf_writer.add_page(pdf_reader.pages[0])
+        
+        # Insertar nueva página con la imagen
+        new_page_reader = PdfReader(BytesIO(new_page_data))
+        if len(new_page_reader.pages) > 0:
+            pdf_writer.add_page(new_page_reader.pages[0])
+        
+        # Agregar resto de páginas (si hay más de 1 página original)
+        for i in range(1, len(pdf_reader.pages)):
+            pdf_writer.add_page(pdf_reader.pages[i])
+        
+        # Generar PDF final
+        output_buffer = BytesIO()
+        pdf_writer.write(output_buffer)
+        output_data = output_buffer.getvalue()
+        output_buffer.close()
+        
+        return Response(output_data, mimetype='application/pdf')
+        
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error procesando PDF: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
