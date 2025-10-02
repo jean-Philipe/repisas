@@ -76,10 +76,26 @@ def render_endpoint():
         if not result.get('ok'):
             return jsonify({'ok': False, 'error': result.get('error', 'Error desconocido')}), 422
 
-    # Render SVG y convertir a PNG preservando transparencias y colores
-    svg = render_svg(input_data, result)
-    png_bytes = cairosvg.svg2png(bytestring=svg.encode('utf-8'))
-    return Response(png_bytes, mimetype='image/png')
+    try:
+        # Render SVG y convertir a PNG preservando transparencias y colores
+        svg = render_svg(input_data, result)
+        if not svg or len(svg.strip()) == 0:
+            return jsonify({'ok': False, 'error': 'SVG generado está vacío'}), 500
+            
+        # Convertir con parámetros específicos para evitar corrupción
+        png_bytes = cairosvg.svg2png(
+            bytestring=svg.encode('utf-8'),
+            output_width=900,
+            output_height=680,
+            background_color='white'
+        )
+        
+        if not png_bytes or len(png_bytes) == 0:
+            return jsonify({'ok': False, 'error': 'PNG generado está vacío'}), 500
+            
+        return Response(png_bytes, mimetype='image/png')
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error generando imagen: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
