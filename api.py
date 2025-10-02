@@ -90,8 +90,8 @@ def render_endpoint():
         # Convertir con parámetros específicos para evitar corrupción
         png_bytes = cairosvg.svg2png(
             bytestring=svg.encode('utf-8'),
-            output_width=900,
-            output_height=680,
+            output_width=1200,
+            output_height=900,
             background_color='white'
         )
         
@@ -128,18 +128,46 @@ def pdf_endpoint():
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
         
-        # Insertar imagen centrada en la página
+        # Definir colores
+        orange_color = (1.0, 0.5, 0.0)  # RGB para naranja
+        black_color = (0.0, 0.0, 0.0)   # RGB para negro
+        white_color = (1.0, 1.0, 1.0)   # RGB para blanco
+        
+        # Dibujar marco negro
+        frame_width = 4
+        c.setStrokeColor(black_color)
+        c.setLineWidth(frame_width)
+        c.rect(frame_width/2, frame_width/2, width-frame_width, height-frame_width, stroke=1, fill=0)
+        
+        # Dibujar banner naranja en la parte superior
+        banner_height = 60
+        c.setFillColor(orange_color)
+        c.rect(0, height - banner_height, width, banner_height, stroke=0, fill=1)
+        
+        # Texto "PLANO PROPUESTO" en blanco
+        c.setFillColor(white_color)
+        c.setFont("Helvetica-Bold", 24)
+        text_width = c.stringWidth("PLANO PROPUESTO", "Helvetica-Bold", 24)
+        text_x = (width - text_width) / 2
+        text_y = height - banner_height + 20
+        c.drawString(text_x, text_y, "PLANO PROPUESTO")
+        
+        # Insertar imagen centrada en el espacio restante
         img = ImageReader(BytesIO(image_data))
         img_width, img_height = img.getSize()
         
-        # Calcular escala para que la imagen quepa en la página manteniendo proporción
-        scale = min(width * 0.8 / img_width, height * 0.8 / img_height)
+        # Calcular espacio disponible (restando banner y márgenes)
+        available_width = width - 40  # márgenes laterales
+        available_height = height - banner_height - 60  # banner + márgenes
+        
+        # Calcular escala para que la imagen quepa manteniendo proporción
+        scale = min(available_width / img_width, available_height / img_height)
         new_width = img_width * scale
         new_height = img_height * scale
         
-        # Centrar la imagen
+        # Centrar la imagen en el espacio disponible
         x = (width - new_width) / 2
-        y = (height - new_height) / 2
+        y = (height - banner_height - new_height) / 2
         
         c.drawImage(img, x, y, width=new_width, height=new_height)
         c.save()
