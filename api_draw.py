@@ -98,74 +98,95 @@ def render_svg(input_data: Dict, result: Dict) -> str:
     # shelves group
     parts.append('<g fill="#e43" fill-opacity="0.15" stroke="#e43" stroke-width="3">')
 
-    # B (right)
-    if per_wall('B') > 0:
-        d = depth_of('B') * s
-        L = min(per_wall('B'), B) * s
-        hasA = has_wall('A')
-        hasE = has_wall('E')
-        dA = depth_of('A') * s if hasA else 0
-        fills_full = approximately_equal(per_wall('B'), B)
-        y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
-        parts.append(f'<rect x="{x0 + w - d}" y="{y_start}" width="{d}" height="{L}" />')
-
-    # A (top)
-    if per_wall('A') > 0:
-        dA = depth_of('A') * s
-        useE = has_wall('E')
-        useB = has_wall('B')
-        dE = depth_of('E') * s if useE else 0
-        L = min(result['meta'].get('lenA', A), A) * s
-        x_start = x0
-        if useE:
-            e_fills_full = approximately_equal(per_wall('E'), E)
-            if e_fills_full:
-                x_start = x0 + dE
-        parts.append(f'<rect x="{x_start}" y="{y0}" width="{L}" height="{dA}" />')
-
-    # E (left)
-    if per_wall('E') > 0:
-        d = depth_of('E') * s
-        L = min(per_wall('E'), E) * s
-        hasA = has_wall('A')
-        hasB = has_wall('B')
-        dA = depth_of('A') * s if hasA else 0
-        fills_full = approximately_equal(per_wall('E'), E)
-        y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
-        parts.append(f'<rect x="{x0}" y="{y_start}" width="{d}" height="{L}" />')
+    # Track positions for each wall to place shelves sequentially
+    wall_positions = {'A': 0, 'B': 0, 'E': 0}
+    
+    # Draw each individual shelf from the plan
+    for shelf in result["plan"]:
+        wall = shelf["wall"]
+        length = shelf["length"] * s
+        depth = shelf["depth"] * s
+        
+        if wall == 'B':  # Right wall
+            hasA = has_wall('A')
+            hasE = has_wall('E')
+            dA = depth_of('A') * s if hasA else 0
+            fills_full = approximately_equal(per_wall('B'), B)
+            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+            # Position this shelf after previous ones on wall B
+            current_y = y_start + wall_positions['B']
+            parts.append(f'<rect x="{x0 + w - depth}" y="{current_y}" width="{depth}" height="{length}" />')
+            wall_positions['B'] += length
+            
+        elif wall == 'A':  # Top wall
+            useE = has_wall('E')
+            dE = depth_of('E') * s if useE else 0
+            x_start = x0
+            if useE:
+                e_fills_full = approximately_equal(per_wall('E'), E)
+                if e_fills_full:
+                    x_start = x0 + dE
+            # Position this shelf after previous ones on wall A
+            current_x = x_start + wall_positions['A']
+            parts.append(f'<rect x="{current_x}" y="{y0}" width="{length}" height="{depth}" />')
+            wall_positions['A'] += length
+            
+        elif wall == 'E':  # Left wall
+            hasA = has_wall('A')
+            hasB = has_wall('B')
+            dA = depth_of('A') * s if hasA else 0
+            fills_full = approximately_equal(per_wall('E'), E)
+            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
+            # Position this shelf after previous ones on wall E
+            current_y = y_start + wall_positions['E']
+            parts.append(f'<rect x="{x0}" y="{current_y}" width="{depth}" height="{length}" />')
+            wall_positions['E'] += length
 
     parts.append('</g>')
 
     # shelf labels (outside the group so they're black)
-    if per_wall('B') > 0:
-        d = depth_of('B') * s
-        hasA = has_wall('A')
-        hasE = has_wall('E')
-        dA = depth_of('A') * s if hasA else 0
-        fills_full = approximately_equal(per_wall('B'), B)
-        y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
-        parts.append(f'<text class="legend" x="{x0 + w - d/2}" y="{y_start - 6}" text-anchor="middle">{round(per_wall("B"),1)} × {int(depth_of("B"))}</text>')
-
-    if per_wall('A') > 0:
-        dA = depth_of('A') * s
-        useE = has_wall('E')
-        dE = depth_of('E') * s if useE else 0
-        L = min(result['meta'].get('lenA', A), A) * s
-        x_start = x0
-        if useE:
-            e_fills_full = approximately_equal(per_wall('E'), E)
-            if e_fills_full:
-                x_start = x0 + dE
-        parts.append(f'<text class="legend" x="{x_start + L/2}" y="{y0 + dA + 14}" text-anchor="middle">{result["meta"].get("lenA", A)} × {int(depth_of("A"))}</text>')
-
-    if per_wall('E') > 0:
-        d = depth_of('E') * s
-        hasA = has_wall('A')
-        hasB = has_wall('B')
-        dA = depth_of('A') * s if hasA else 0
-        fills_full = approximately_equal(per_wall('E'), E)
-        y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
-        parts.append(f'<text class="legend" x="{x0 + d/2}" y="{y_start - 6}" text-anchor="middle">{round(per_wall("E"),1)} × {int(depth_of("E"))}</text>')
+    # Draw labels for each individual shelf
+    wall_positions_labels = {'A': 0, 'B': 0, 'E': 0}
+    
+    for i, shelf in enumerate(result["plan"]):
+        wall = shelf["wall"]
+        length = shelf["length"]
+        depth = shelf["depth"]
+        
+        if wall == 'B':  # Right wall
+            hasA = has_wall('A')
+            hasE = has_wall('E')
+            dA = depth_of('A') * s if hasA else 0
+            fills_full = approximately_equal(per_wall('B'), B)
+            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+            # Position label for this specific shelf
+            current_y = y_start + wall_positions_labels['B'] + (length * s / 2)
+            parts.append(f'<text class="legend" x="{x0 + w - (depth * s)/2}" y="{current_y}" text-anchor="middle">{length} × {depth}</text>')
+            wall_positions_labels['B'] += length * s
+            
+        elif wall == 'A':  # Top wall
+            useE = has_wall('E')
+            dE = depth_of('E') * s if useE else 0
+            x_start = x0
+            if useE:
+                e_fills_full = approximately_equal(per_wall('E'), E)
+                if e_fills_full:
+                    x_start = x0 + dE
+            # Position label for this specific shelf
+            current_x = x_start + wall_positions_labels['A'] + (length * s / 2)
+            parts.append(f'<text class="legend" x="{current_x}" y="{y0 + (depth * s) + 14}" text-anchor="middle">{length} × {depth}</text>')
+            wall_positions_labels['A'] += length * s
+            
+        elif wall == 'E':  # Left wall
+            hasA = has_wall('A')
+            hasB = has_wall('B')
+            dA = depth_of('A') * s if hasA else 0
+            fills_full = approximately_equal(per_wall('E'), E)
+            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
+            # Position label for this specific shelf
+            current_y = y_start + wall_positions_labels['E'] + (length * s / 2)
+            parts.append(f'<text class="legend" x="{x0 + (depth * s)/2}" y="{current_y}" text-anchor="middle">{length} × {depth}</text>')
+            wall_positions_labels['E'] += length * s
 
     # legend
     parts.append(f'<text class="legend" x="{x0}" y="{y0 + h + 28}" text-anchor="start">Escala aproximada. Cuadrícula cada 50 cm.</text>')
