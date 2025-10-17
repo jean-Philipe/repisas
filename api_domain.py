@@ -45,59 +45,43 @@ def evaluate_plan_quality(plan: List[Dict]) -> Tuple[int, float, int, float]:
 
 def optimize_l_shape_planning(A: float, E: float, D: float, depthA: int, depthE: int, hl: Dict, useA: bool, useE: bool) -> Tuple[float, float, List[Dict]]:
     """
-    Optimiza la planificación para forma L considerando opciones de repisas más largas.
-    Evalúa si es mejor usar una repisa larga que cubra parte de A y E.
+    Optimiza la planificación para forma L entre A y E evaluando dos estrategias:
+    1) A completa y E reducido por la profundidad de A.
+    2) E completa y A reducido por la profundidad de E.
+    Devuelve los largos elegidos y un plan local de referencia.
     """
     if not useA or not useE or not depthA or not depthE:
-        # Fallback al comportamiento original
-        lenA = A
-        lenE = usable_length_e(E, D, True)
-        plan = []
-        if useA:
+        lenA = A if useA else 0.0
+        lenE = usable_length_e(E, D, True) if useE else 0.0
+        plan: List[Dict] = []
+        if useA and depthA:
             plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
-        if useE:
+        if useE and depthE:
             plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
         return lenA, lenE, plan
-    
-    # Opción 1: Planificación tradicional (A y E separados)
-    lenA_trad = A
-    lenE_trad = max(0.0, usable_length_e(E, D, True) - depthA)
-    
-    plan_trad = []
-    if useA:
-        plan_trad.extend(build_shelves_for_wall("A", lenA_trad, depthA, hl["height"], hl["levels"]))
-    if useE:
-        plan_trad.extend(build_shelves_for_wall("E", lenE_trad, depthE, hl["height"], hl["levels"]))
-    
-    # Opción 2: Una repisa larga para A completa + parte de E
-    lenA_opt2 = A
-    lenE_opt2 = max(0.0, usable_length_e(E, D, True) - depthA)
-    
-    # Si E queda muy corto, considerar una repisa que cubra A completa y E completa
-    if lenE_opt2 < MIN_LEN:
-        # Opción 3: Repisa que cubra A completa (122cm) y E completa (302cm)
-        # Esto requeriría una repisa de 122 + 302 = 424cm, que excede MAX_LEN
-        # Pero podemos evaluar si es mejor hacer una repisa de 122cm para A y otra de 302cm para E
-        lenA_opt3 = A
-        lenE_opt3 = usable_length_e(E, D, True)
-        
-        plan_opt3 = []
-        if useA:
-            plan_opt3.extend(build_shelves_for_wall("A", lenA_opt3, depthA, hl["height"], hl["levels"]))
-        if useE:
-            plan_opt3.extend(build_shelves_for_wall("E", lenE_opt3, depthE, hl["height"], hl["levels"]))
-        
-        # Evaluar todas las opciones
-        quality_trad = evaluate_plan_quality(plan_trad)
-        quality_opt3 = evaluate_plan_quality(plan_opt3)
-        
-        if quality_opt3 < quality_trad:
-            return lenA_opt3, lenE_opt3, plan_opt3
-    
-    # Evaluar opción tradicional vs opción 2
-    quality_trad = evaluate_plan_quality(plan_trad)
-    
-    return lenA_trad, lenE_trad, plan_trad
+
+    usableE = usable_length_e(E, D, True)
+
+    # Estrategia 1: A completa, E reducido
+    lenA_1 = A
+    lenE_1 = max(0.0, usableE - depthA)
+    plan_1: List[Dict] = []
+    plan_1.extend(build_shelves_for_wall("A", lenA_1, depthA, hl["height"], hl["levels"]))
+    plan_1.extend(build_shelves_for_wall("E", lenE_1, depthE, hl["height"], hl["levels"]))
+
+    # Estrategia 2: E completa, A reducido
+    lenE_2 = usableE
+    lenA_2 = max(0.0, A - depthE)
+    plan_2: List[Dict] = []
+    plan_2.extend(build_shelves_for_wall("E", lenE_2, depthE, hl["height"], hl["levels"]))
+    plan_2.extend(build_shelves_for_wall("A", lenA_2, depthA, hl["height"], hl["levels"]))
+
+    q1 = evaluate_plan_quality(plan_1)
+    q2 = evaluate_plan_quality(plan_2)
+
+    if q2 < q1:
+        return lenA_2, lenE_2, plan_2
+    return lenA_1, lenE_1, plan_1
 
 def pick_max_le(options: List[int], limit: float) -> Optional[int]:
     for v in options:
@@ -122,8 +106,7 @@ def pack_lengths(target: float) -> List[float]:
     rem = target - n_full * MAX_LEN
     if rem == 0:
         return [MAX_LEN] * n_full
-    if rem < MIN_LEN:
-        return [MAX_LEN] * n_full
+    # Siempre incluir el remanente, aunque sea menor a MIN_LEN, para cubrir 100% del muro
     return [MAX_LEN] * n_full + [round1(rem)]
 
 def max_depth_per_wall(C: float, D: float) -> Dict[str, Optional[int]]:
@@ -138,6 +121,13 @@ def usable_length_e(E: float, D: float, use_e: bool) -> float:
     if D == 0:
         return max(0.0, E - DOOR_CLEAR)
     return E
+
+def usable_length_b(B: float, C: float, use_b: bool) -> float:
+    if not use_b:
+        return B
+    if C == 0:
+        return max(0.0, B - DOOR_CLEAR)
+    return B
 
 def build_shelves_for_wall(wall: str, usable_len: float, depth: int, height: int, levels: int) -> List[Dict]:
     pieces = pack_lengths(usable_len)
@@ -177,7 +167,7 @@ def plan_shelves_py(params: Dict) -> Dict:
         if common:
             depthA = depthB = depthE = common
 
-    lenA, lenB, lenE = A, B, E
+    lenA, lenB, lenE = A, usable_length_b(B, C, True), E
     if shape == "L":
         useOnlyB = useA and useB and not useE
         useOnlyE = useA and useE and not useB
@@ -186,11 +176,12 @@ def plan_shelves_py(params: Dict) -> Dict:
         if useOnlyB and depthA and depthB:
             # Opción 1: A completa, B reducido
             lenA_opt1 = A
-            lenB_opt1 = max(0.0, B - depthA)
+            Bu = usable_length_b(B, C, True)
+            lenB_opt1 = max(0.0, Bu - depthA)
             
             # Opción 2: A reducido, B completo
             lenA_opt2 = max(0.0, A - (depthB or 0))
-            lenB_opt2 = B
+            lenB_opt2 = Bu
             
             # Evaluar ambas opciones
             plan_opt1 = []
@@ -230,12 +221,12 @@ def plan_shelves_py(params: Dict) -> Dict:
     if shape == "U" and useA and useB and useE:
         # Variante 1 (actual): restar profundidades laterales a A
         lenA_v1 = max(0.0, A - (depthB or 0) - (depthE or 0))
-        lenB_v1 = B
+        lenB_v1 = usable_length_b(B, C, True)
         lenE_v1 = usable_length_e(E, D, True)
 
         # Variante 2 (priorizar A completa): usar A completa y descontar profundidad de A a B y E
         lenA_v2 = A
-        lenB_v2 = max(0.0, B - (depthA or 0))
+        lenB_v2 = max(0.0, usable_length_b(B, C, True) - (depthA or 0))
         lenE_v2 = max(0.0, usable_length_e(E, D, True) - (depthA or 0))
 
         def build_plan_lengths(la: float, lb: float, le: float):
