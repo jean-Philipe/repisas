@@ -6,9 +6,11 @@ MIN_LEN = 40
 DOOR_CLEAR = 80
 
 HEIGHT_OPTIONS = [
-    {"h": 300, "levels": [6, 4]},
-    {"h": 250, "levels": [5, 4]},
+    {"h": 300, "levels": [6]},
+    {"h": 250, "levels": [5]},
     {"h": 200, "levels": [4]},
+    {"h": 180, "levels": [4]},
+    {"h": 160, "levels": [4]},
 ]
 
 def round1(x: float) -> float:
@@ -90,7 +92,7 @@ def pick_max_le(options: List[int], limit: float) -> Optional[int]:
     return None
 
 def pick_height_and_levels(room_height: float) -> Optional[Dict[str, int]]:
-    usable = room_height - 40
+    usable = room_height - 30
     sorted_opts = sorted(HEIGHT_OPTIONS, key=lambda o: o["h"], reverse=True)
     for opt in sorted_opts:
         if opt["h"] <= usable:
@@ -145,7 +147,7 @@ def plan_shelves_py(params: Dict) -> Dict:
 
     hl = pick_height_and_levels(room_height)
     if not hl:
-        return {"ok": False, "error": "Ninguna altura cumple la holgura de 40 cm al cielo."}
+        return {"ok": False, "error": "Ninguna altura cumple la holgura de 30 cm al cielo."}
 
     depth_max = max_depth_per_wall(C, D)
     useA = "A" in walls
