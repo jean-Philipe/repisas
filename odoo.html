@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Cotización de Repisas</title>
+</head>
+<body>
+    <h1>Sistema de Cotización de Repisas</h1>
+    
+    <div style="display: flex; gap: 20px;">
+        <div style="flex: 1;">
+            <form id="shelfForm">
+                <h3>Dimensiones de los Muros</h3>
+                <p>
+                    <label>Muro A (cm): <input type="number" id="wallA" name="A" value="300" min="0" step="0.1" required></label>
+                </p>
+                <p>
+                    <label>Muro B (cm): <input type="number" id="wallB" name="B" value="350" min="0" step="0.1" required></label>
+                </p>
+                <p>
+                    <label>Muro C (cm): <input type="number" id="wallC" name="C" value="150" min="0" step="0.1" required></label>
+                </p>
+                <p>
+                    <label>Muro D (cm): <input type="number" id="wallD" name="D" value="80" min="0" step="0.1" required></label>
+                </p>
+                <p>
+                    <label>Muro E (cm): <input type="number" id="wallE" name="E" value="350" min="0" step="0.1" required></label>
+                </p>
+                <p>
+                    <label>Altura del Cuarto (cm): <input type="number" id="roomHeight" name="roomHeight" value="250" min="0" step="0.1" required></label>
+                </p>
+
+                <h3>Forma del Cuarto</h3>
+                <p>
+                    <label><input type="radio" name="shape" value="L" id="shapeL"> Forma L</label>
+                </p>
+                <p>
+                    <label><input type="radio" name="shape" value="U" id="shapeU"> Forma U</label>
+                </p>
+                <p>
+                    <label><input type="radio" name="shape" value="1" id="shape1"> Una Pared</label>
+                </p>
+
+                <div id="wallsSection" style="display: none;">
+                    <h4>Selecciona los muros a utilizar</h4>
+                    <div id="wallOptions">
+                        <!-- Se llenará dinámicamente -->
+                    </div>
+                </div>
+
+                <p>
+                    <button type="submit" id="calculateBtn">Calcular Cotización</button>
+                </p>
+            </form>
+        </div>
+
+        <div style="flex: 1; border: 1px solid #ccc; padding: 20px; background: white;">
+            <div id="loading" style="display: none;">
+                <p>Calculando...</p>
+            </div>
+
+            <div id="resultContainer">
+                <h3>Tu plano aparecerá aquí</h3>
+                <p>Completa el formulario y haz clic en "Calcular Cotización"</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== CONSTANTES Y CONFIGURACIÓN =====
+        const DEPTHS = [68, 48, 38, 28];
+        const MAX_LEN = 243;
+        const MIN_LEN = 40;
+        const DOOR_CLEAR = 80;
+
+        const HEIGHT_OPTIONS = [
+            {"h": 300, "levels": [6, 4]},
+            {"h": 250, "levels": [5, 4]},
+            {"h": 200, "levels": [4]},
+        ];
+
+        // Opciones de muros por forma
+        const wallOptions = {
+            'L': [
+                { value: 'A,B', label: 'Muros A y B', description: 'Esquina superior derecha' },
+                { value: 'A,E', label: 'Muros A y E', description: 'Esquina superior izquierda' },
+                { value: 'B,C', label: 'Muros B y C', description: 'Esquina inferior derecha' },
+                { value: 'C,E', label: 'Muros C y E', description: 'Esquina inferior izquierda' }
+            ],
+            'U': [
+                { value: 'A,B,E', label: 'Muros A, B y E', description: 'Forma U completa' }
+            ],
+            '1': [
+                { value: 'A', label: 'Solo Muro A', description: 'Pared superior' },
+                { value: 'B', label: 'Solo Muro B', description: 'Pared derecha' },
+                { value: 'C', label: 'Solo Muro C', description: 'Pared inferior' },
+                { value: 'D', label: 'Solo Muro D', description: 'Pared central' },
+                { value: 'E', label: 'Solo Muro E', description: 'Pared izquierda' }
+            ]
+        };
+
+        // ===== FUNCIONES DE CÁLCULO (PORTADAS DE PYTHON) =====
+        function round1(x) {
+            return Math.round(x * 10) / 10.0;
+        }
+
+        function pickMaxLe(options, limit) {
+            for (let v of options) {
+                if (v <= limit) {
+                    return v;
+                }
+            }
+            return null;
+        }
+
+        function pickHeightAndLevels(roomHeight) {
+            const usable = roomHeight - 40;
+            const sortedOpts = HEIGHT_OPTIONS.sort((a, b) => b.h - a.h);
+            for (let opt of sortedOpts) {
+                if (opt.h <= usable) {
+                    return { height: opt.h, levels: Math.max(...opt.levels) };
+                }
+            }
+            return null;
+        }
+
+        function packLengths(target) {
+            if (target <= 0) return [];
+            if (target <= MAX_LEN) return [round1(target)];
+            
+            const nFull = Math.floor(target / MAX_LEN);
+            const rem = target - nFull * MAX_LEN;
+            
+            if (rem === 0) {
+                return new Array(nFull).fill(MAX_LEN);
+            }
+            if (rem < MIN_LEN) {
+                return new Array(nFull).fill(MAX_LEN);
+            }
+            return [...new Array(nFull).fill(MAX_LEN), round1(rem)];
+        }
+
+        function maxDepthPerWall(C, D) {
+            const b = pickMaxLe(DEPTHS, C !== null ? C : Infinity);
+            const e = pickMaxLe(DEPTHS, D !== null ? D : Infinity);
+            const a = pickMaxLe(DEPTHS, Infinity);
+            return { A: a, B: b, E: e };
+        }
+
+        function usableLengthE(E, D, useE) {
+            if (!useE) return E;
+            if (D === 0) return Math.max(0.0, E - DOOR_CLEAR);
+            return E;
+        }
+
+        function buildShelvesForWall(wall, usableLen, depth, height, levels) {
+            const pieces = packLengths(usableLen);
+            return pieces.map(l => ({
+                wall: wall,
+                length: l,
+                depth: depth,
+                height: height,
+                levels: levels
+            }));
+        }
+
+        function planShelvesPy(params) {
+            const A = parseFloat(params.A || 0);
+            const B = parseFloat(params.B || 0);
+            const C = parseFloat(params.C || 0);
+            const D = parseFloat(params.D || 0);
+            const E = parseFloat(params.E || 0);
+            const roomHeight = parseFloat(params.roomHeight || params.H || 0);
+            const walls = params.walls || [];
+            const shape = params.shape || "L";
+
+            const hl = pickHeightAndLevels(roomHeight);
+            if (!hl) {
+                return { ok: false, error: "Ninguna altura cumple la holgura de 40 cm al cielo." };
+            }
+
+            const depthMax = maxDepthPerWall(C, D);
+            const useA = walls.includes("A");
+            const useB = walls.includes("B");
+            const useE = walls.includes("E");
+            
+            console.log('Walls selected:', walls);
+            console.log('useA:', useA, 'useB:', useB, 'useE:', useE);
+            console.log('depthMax:', depthMax);
+
+            function chooseDepthCommon(ws) {
+                const cands = ws.map(w => depthMax[w]).filter(d => d !== null);
+                if (cands.length === 0) return null;
+                return Math.min(...cands);
+            }
+
+            let depthA = depthMax.A;
+            let depthB = depthMax.B;
+            let depthE = depthMax.E;
+
+            if (shape === "U" && useA && useB && useE) {
+                const common = chooseDepthCommon(["B", "A", "E"]);
+                if (common) {
+                    depthA = depthB = depthE = common;
+                }
+            }
+
+            let lenA = A, lenB = B, lenE = E;
+            
+            if (shape === "L") {
+                const useOnlyB = useA && useB && !useE;
+                const useOnlyE = useA && useE && !useB;
+                
+                if (useOnlyB && B > MAX_LEN && A <= MAX_LEN && depthA) {
+                    lenA = A;
+                    lenB = Math.max(0.0, B - depthA);
+                } else if (useOnlyE && usableLengthE(E, D, true) > MAX_LEN && A <= MAX_LEN && depthA) {
+                    lenA = A;
+                    lenE = Math.max(0.0, usableLengthE(E, D, true) - depthA);
+                } else {
+                    if (useA && useB) {
+                        lenA = Math.max(0.0, A - (depthB || 0));
+                    }
+                    if (useA && useE) {
+                        lenA = Math.max(0.0, A - (depthE || 0));
+                    }
+                    if (useE) {
+                        lenE = usableLengthE(E, D, true);
+                    }
+                }
+            }
+            
+            if (shape === "U" && useA && useB && useE) {
+                lenA = Math.max(0.0, A - (depthB || 0) - (depthE || 0));
+            }
+            if (shape !== "L" && useE) {
+                lenE = usableLengthE(E, D, true);
+            }
+
+            const plan = [];
+            
+            if (useB) {
+                if (!depthB) {
+                    return { ok: false, error: "No cabe ninguna profundidad en B por C." };
+                }
+                plan.push(...buildShelvesForWall("B", lenB, depthB, hl.height, hl.levels));
+            }
+            if (useA) {
+                if (!depthA) {
+                    return { ok: false, error: "No hay profundidad válida para A." };
+                }
+                plan.push(...buildShelvesForWall("A", lenA, depthA, hl.height, hl.levels));
+            }
+            if (useE) {
+                if (!depthE) {
+                    return { ok: false, error: "No cabe ninguna profundidad en E por D." };
+                }
+                plan.push(...buildShelvesForWall("E", lenE, depthE, hl.height, hl.levels));
+            }
+
+            const totals = {
+                totalLen: round1(plan.reduce((sum, p) => sum + p.length, 0)),
+                pieces: plan.length,
+                cuts: plan.filter(p => p.length < MAX_LEN).length,
+            };
+            
+            const meta = {
+                depthMax: depthMax,
+                hl: hl,
+                lenA: round1(lenA),
+                lenB: round1(lenB),
+                lenE: round1(lenE),
+            };
+            
+            return { ok: true, plan: plan, totals: totals, meta: meta };
+        }
+
+        // ===== FUNCIONES DE RENDERIZADO SVG =====
+        function renderSvg(inputData, result) {
+            const A = parseFloat(inputData.A);
+            const B = parseFloat(inputData.B);
+            const E = parseFloat(inputData.E);
+            const baseW = A;
+            const baseH = Math.max(B, E);
+            
+            function calculateTextWidth(text, fontSize = 12) {
+                return text.length * fontSize * 0.6;
+            }
+            
+            const labelAWidth = calculateTextWidth(`A (${A} cm)`);
+            const labelBWidth = calculateTextWidth(`B (${B} cm)`);
+            const labelEWidth = calculateTextWidth(`E (${E} cm)`);
+            
+            const marginLeft = Math.max(15, labelEWidth + 5);
+            const marginRight = Math.max(15, labelBWidth + 5);
+            const marginTop = 25;
+            const marginBottom = 35;
+            
+            const minCanvasW = baseW + marginLeft + marginRight;
+            const minCanvasH = baseH + marginTop + marginBottom;
+            
+            const minSize = 600;
+            const scaleFactor = Math.max(minSize / minCanvasW, minSize / minCanvasH, 1.0);
+            
+            const canvasW = minCanvasW * scaleFactor;
+            const canvasH = minCanvasH * scaleFactor;
+            
+            const availableW = canvasW - marginLeft - marginRight;
+            const availableH = canvasH - marginTop - marginBottom;
+            const s = Math.min(availableW / baseW, availableH / baseH);
+            
+            const w = baseW * s;
+            const h = baseH * s;
+            
+            const x0 = marginLeft + (availableW - w) / 2;
+            const y0 = marginTop + (availableH - h) / 2;
+
+            function perWall(wall) {
+                return result.plan.filter(p => p.wall === wall).reduce((sum, p) => sum + p.length, 0);
+            }
+
+            function depthOf(wall) {
+                const p = result.plan.find(p => p.wall === wall);
+                return p ? p.depth : 0;
+            }
+
+            function hasWall(wall) {
+                return result.plan.some(p => p.wall === wall);
+            }
+
+            function approximatelyEqual(a, b, tol = 0.5) {
+                return Math.abs(a - b) <= tol;
+            }
+
+            const parts = [];
+            parts.push(
+                `<svg viewBox="0 0 ${canvasW} ${canvasH}" width="${canvasW}" height="${canvasH}"\n` +
+                `     xmlns="http://www.w3.org/2000/svg" text-rendering="optimizeLegibility">`
+            );
+            
+            parts.push(
+                '<style>\n' +
+                '  text { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill:#111; }\n' +
+                '  .measure { font-size:12px; font-weight:700; }\n' +
+                '  .legend { font-size:13px; fill:#555; }\n' +
+                '  .walllbl { font-size:12px; }\n' +
+                '</style>'
+            );
+            
+            // Grid
+            parts.push('<g class="grid" stroke="#ddd" stroke-width="1">');
+            let x = 0;
+            while (x <= w) {
+                parts.push(`<line x1="${x0+x}" y1="${y0}" x2="${x0+x}" y2="${y0+h}" />`);
+                x += s * 50;
+            }
+            let y = 0;
+            while (y <= h) {
+                parts.push(`<line x1="${x0}" y1="${y0+y}" x2="${x0+w}" y2="${y0+y}" />`);
+                y += s * 50;
+            }
+            parts.push('</g>');
+
+            // Room rectangle
+            parts.push(`<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="none" stroke="#111" stroke-width="4" />`);
+
+            // Wall labels
+            parts.push(`<text class="walllbl" x="${x0 + w/2}" y="${y0 - 10}" text-anchor="middle">A (${A} cm)</text>`);
+            parts.push(`<text class="walllbl" x="${x0 + w + 10}" y="${y0 + h/2}" text-anchor="start">B (${B} cm)</text>`);
+            parts.push(`<text class="walllbl" x="${x0 - 10}" y="${y0 + h/2}" text-anchor="end">E (${E} cm)</text>`);
+
+            // Shelves group
+            parts.push('<g fill="#e43" fill-opacity="0.15" stroke="#e43" stroke-width="3">');
+
+            const wallPositions = { A: 0, B: 0, E: 0 };
+            
+            for (let shelf of result.plan) {
+                const wall = shelf.wall;
+                const length = shelf.length * s;
+                const depth = shelf.depth * s;
+                
+                if (wall === 'B') {
+                    const hasA = hasWall('A');
+                    const hasE = hasWall('E');
+                    const dA = depthOf('A') * s;
+                    const fillsFull = approximatelyEqual(perWall('B'), B);
+                    const yStart = fillsFull ? y0 : (hasA && !hasE ? (y0 + dA) : y0);
+                    const currentY = yStart + wallPositions.B;
+                    parts.push(`<rect x="${x0 + w - depth}" y="${currentY}" width="${depth}" height="${length}" />`);
+                    wallPositions.B += length;
+                } else if (wall === 'A') {
+                    const useE = hasWall('E');
+                    const dE = depthOf('E') * s;
+                    let xStart = x0;
+                    if (useE) {
+                        const eFillsFull = approximatelyEqual(perWall('E'), E);
+                        if (eFillsFull) {
+                            xStart = x0 + dE;
+                        }
+                    }
+                    const currentX = xStart + wallPositions.A;
+                    parts.push(`<rect x="${currentX}" y="${y0}" width="${length}" height="${depth}" />`);
+                    wallPositions.A += length;
+                } else if (wall === 'E') {
+                    const hasA = hasWall('A');
+                    const hasB = hasWall('B');
+                    const dA = depthOf('A') * s;
+                    const fillsFull = approximatelyEqual(perWall('E'), E);
+                    const yStart = fillsFull ? y0 : (hasA && !hasB ? (y0 + dA) : y0);
+                    const currentY = yStart + wallPositions.E;
+                    parts.push(`<rect x="${x0}" y="${currentY}" width="${depth}" height="${length}" />`);
+                    wallPositions.E += length;
+                }
+            }
+
+            parts.push('</g>');
+
+            // Shelf labels
+            const wallPositionsLabels = { A: 0, B: 0, E: 0 };
+            
+            for (let shelf of result.plan) {
+                const wall = shelf.wall;
+                const length = shelf.length;
+                const depth = shelf.depth;
+                
+                if (wall === 'B') {
+                    const hasA = hasWall('A');
+                    const hasE = hasWall('E');
+                    const dA = depthOf('A') * s;
+                    const fillsFull = approximatelyEqual(perWall('B'), B);
+                    const yStart = fillsFull ? y0 : (hasA && !hasE ? (y0 + dA) : y0);
+                    const currentY = yStart + wallPositionsLabels.B + (length * s / 2);
+                    parts.push(`<text class="legend" x="${x0 + w - (depth * s)/2}" y="${currentY}" text-anchor="middle">${length} × ${depth}</text>`);
+                    wallPositionsLabels.B += length * s;
+                } else if (wall === 'A') {
+                    const useE = hasWall('E');
+                    const dE = depthOf('E') * s;
+                    let xStart = x0;
+                    if (useE) {
+                        const eFillsFull = approximatelyEqual(perWall('E'), E);
+                        if (eFillsFull) {
+                            xStart = x0 + dE;
+                        }
+                    }
+                    const currentX = xStart + wallPositionsLabels.A + (length * s / 2);
+                    parts.push(`<text class="legend" x="${currentX}" y="${y0 + (depth * s) + 14}" text-anchor="middle">${length} × ${depth}</text>`);
+                    wallPositionsLabels.A += length * s;
+                } else if (wall === 'E') {
+                    const hasA = hasWall('A');
+                    const hasB = hasWall('B');
+                    const dA = depthOf('A') * s;
+                    const fillsFull = approximatelyEqual(perWall('E'), E);
+                    const yStart = fillsFull ? y0 : (hasA && !hasB ? (y0 + dA) : y0);
+                    const currentY = yStart + wallPositionsLabels.E + (length * s / 2);
+                    parts.push(`<text class="legend" x="${x0 + (depth * s)/2}" y="${currentY}" text-anchor="middle">${length} × ${depth}</text>`);
+                    wallPositionsLabels.E += length * s;
+                }
+            }
+
+            parts.push(`<text class="legend" x="${x0}" y="${y0 + h + 28}" text-anchor="start">Escala aproximada. Cuadrícula cada 50 cm.</text>`);
+            parts.push('</svg>');
+            
+            return parts.join('');
+        }
+
+        // ===== FUNCIONES DE INTERFAZ =====
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeForm();
+            setupEventListeners();
+        });
+
+        function initializeForm() {
+            document.getElementById('wallA').value = '300';
+            document.getElementById('wallB').value = '350';
+            document.getElementById('wallC').value = '150';
+            document.getElementById('wallD').value = '80';
+            document.getElementById('wallE').value = '350';
+            document.getElementById('roomHeight').value = '250';
+        }
+
+        function setupEventListeners() {
+            // Event listeners para radio buttons de forma
+            document.querySelectorAll('input[name="shape"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        selectShape(this.value);
+                    }
+                });
+            });
+
+            document.getElementById('shelfForm').addEventListener('submit', handleFormSubmit);
+        }
+
+        function selectShape(shape) {
+            showWallOptions(shape);
+        }
+
+        function showWallOptions(shape) {
+            const wallsSection = document.getElementById('wallsSection');
+            const wallOptionsContainer = document.getElementById('wallOptions');
+            
+            wallsSection.style.display = 'block';
+            wallOptionsContainer.innerHTML = '';
+
+            wallOptions[shape].forEach((option, idx) => {
+                const wallOption = document.createElement('p');
+                wallOption.innerHTML = `
+                    <label>
+                        <input type="checkbox" value="${option.value}" id="wall_${option.value}">
+                        ${option.label} - ${option.description}
+                    </label>
+                `;
+                wallOptionsContainer.appendChild(wallOption);
+            });
+
+            // Si la forma es U, marcar por defecto la única opción A,B,E
+            if (shape === 'U') {
+                const cb = wallOptionsContainer.querySelector('input[type="checkbox"]');
+                if (cb) cb.checked = true;
+            }
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const selectedWalls = getSelectedWalls();
+            
+            console.log('Selected walls from form:', selectedWalls);
+            
+            if (selectedWalls.length === 0) {
+                showError('Por favor selecciona al menos un conjunto de muros.');
+                return;
+            }
+
+            const inputData = {
+                A: parseFloat(formData.get('A')),
+                B: parseFloat(formData.get('B')),
+                C: parseFloat(formData.get('C')),
+                D: parseFloat(formData.get('D')),
+                E: parseFloat(formData.get('E')),
+                roomHeight: parseFloat(formData.get('roomHeight')),
+                shape: document.querySelector('input[name="shape"]:checked').value,
+                walls: selectedWalls
+            };
+
+            console.log('Final input data:', inputData);
+            calculateAndRender(inputData);
+        }
+
+        function getSelectedWalls() {
+            const selectedCheckboxes = document.querySelectorAll('#wallOptions input[type="checkbox"]:checked');
+            const wallValues = Array.from(selectedCheckboxes).map(cb => cb.value);
+            
+            // Convertir valores como "A,B,E" en arrays de muros individuales
+            const allWalls = [];
+            wallValues.forEach(wallGroup => {
+                const walls = wallGroup.split(',');
+                allWalls.push(...walls);
+            });
+            
+            return allWalls;
+        }
+
+        function calculateAndRender(inputData) {
+            showLoading(true);
+            clearResults();
+
+            try {
+                console.log('Input data:', inputData);
+                
+                // Calcular el plan
+                const result = planShelvesPy(inputData);
+                console.log('Plan result:', result);
+                
+                if (!result.ok) {
+                    throw new Error(result.error || 'No se pudo generar un plan válido');
+                }
+
+                // Renderizar la imagen SVG
+                const svgContent = renderSvg(inputData, result);
+                
+                // Mostrar resultados
+                displayResults(result, svgContent);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError(`Error: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function displayResults(result, svgContent) {
+            const resultContainer = document.getElementById('resultContainer');
+            
+            resultContainer.innerHTML = `
+                <div style="background: #efe; color: #363; padding: 10px; margin: 10px 0; border: 1px solid #cfc;">
+                    ✅ Plan generado exitosamente
+                </div>
+                
+                <div style="width: 100%; text-align: center; margin: 20px 0;">
+                    ${svgContent}
+                </div>
+                
+                <div style="background: #f8f9fa; padding: 15px; margin: 10px 0;">
+                    <h4>Detalles del Plan</h4>
+                    <p><strong>Piezas:</strong> ${result.totals.pieces}</p>
+                    <p><strong>Cortes:</strong> ${result.totals.cuts}</p>
+                    <p><strong>Longitud Total:</strong> ${result.totals.totalLen} cm</p>
+                    <p><strong>Niveles:</strong> ${result.meta.hl.levels}</p>
+                    
+                    <h4>Lista de Repisas</h4>
+                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+                        ${result.plan.map((shelf, index) => `
+                            <div style="padding: 5px; border-bottom: 1px solid #eee;">
+                                <strong>Repisa ${index + 1}</strong> - Muro ${shelf.wall}: ${shelf.length} × ${shelf.depth} cm
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            const calculateBtn = document.getElementById('calculateBtn');
+            
+            if (show) {
+                loading.style.display = 'block';
+                calculateBtn.disabled = true;
+                calculateBtn.textContent = 'Calculando...';
+            } else {
+                loading.style.display = 'none';
+                calculateBtn.disabled = false;
+                calculateBtn.textContent = 'Calcular Cotización';
+            }
+        }
+
+        function showError(message) {
+            const resultContainer = document.getElementById('resultContainer');
+            resultContainer.innerHTML = `
+                <div style="background: #fee; color: #c33; padding: 10px; margin: 10px 0; border: 1px solid #fcc;">
+                    ❌ ${message}
+                </div>
+            `;
+        }
+
+        function clearResults() {
+            const resultContainer = document.getElementById('resultContainer');
+            resultContainer.innerHTML = `
+                <h3>Tu plano aparecerá aquí</h3>
+                <p>Completa el formulario y haz clic en "Calcular Cotización"</p>
+            `;
+        }
+    </script>
+</body>
+</html>

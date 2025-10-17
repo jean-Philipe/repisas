@@ -109,24 +109,86 @@ def plan_shelves_py(params: Dict) -> Dict:
                 lenA = max(0.0, A - (depthE or 0))
             if useE:
                 lenE = usable_length_e(E, D, True)
+    # Para forma U con A, B y E activos, evaluar combinaciones y elegir la que minimiza piezas
     if shape == "U" and useA and useB and useE:
-        lenA = max(0.0, A - (depthB or 0) - (depthE or 0))
-    if shape != "L" and useE:
-        lenE = usable_length_e(E, D, True)
+        # Variante 1 (actual): restar profundidades laterales a A
+        lenA_v1 = max(0.0, A - (depthB or 0) - (depthE or 0))
+        lenB_v1 = B
+        lenE_v1 = usable_length_e(E, D, True)
 
-    plan: List[Dict] = []
-    if useB:
-        if not depthB:
-            return {"ok": False, "error": "No cabe ninguna profundidad en B por C."}
-        plan.extend(build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"]))
-    if useA:
-        if not depthA:
-            return {"ok": False, "error": "No hay profundidad válida para A."}
-        plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
-    if useE:
-        if not depthE:
-            return {"ok": False, "error": "No cabe ninguna profundidad en E por D."}
-        plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
+        # Variante 2 (priorizar A completa): usar A completa y descontar profundidad de A a B y E
+        lenA_v2 = A
+        lenB_v2 = max(0.0, B - (depthA or 0))
+        lenE_v2 = max(0.0, usable_length_e(E, D, True) - (depthA or 0))
+
+        def build_plan_lengths(la: float, lb: float, le: float):
+            plan_local: List[Dict] = []
+            if useB:
+                if not depthB:
+                    return None
+                plan_local.extend(build_shelves_for_wall("B", lb, depthB, hl["height"], hl["levels"]))
+            if useA:
+                if not depthA:
+                    return None
+                plan_local.extend(build_shelves_for_wall("A", la, depthA, hl["height"], hl["levels"]))
+            if useE:
+                if not depthE:
+                    return None
+                plan_local.extend(build_shelves_for_wall("E", le, depthE, hl["height"], hl["levels"]))
+            pieces = len(plan_local)
+            cuts = sum(1 for p in plan_local if p["length"] < MAX_LEN)
+            total_len = sum(p["length"] for p in plan_local)
+            return {
+                "plan": plan_local,
+                "pieces": pieces,
+                "cuts": cuts,
+                "tot_len": total_len,
+                "lens": (round1(la), round1(lb), round1(le)),
+            }
+
+        cand1 = build_plan_lengths(lenA_v1, lenB_v1, lenE_v1)
+        cand2 = build_plan_lengths(lenA_v2, lenB_v2, lenE_v2)
+
+        # Elegir el candidato con menos piezas; en empate, menos cortes; luego mayor longitud en A
+        best = cand1
+        if cand2 is not None:
+            if best is None:
+                best = cand2
+            else:
+                if (cand2["pieces"], cand2["cuts"], -cand2["lens"][0]) < (best["pieces"], best["cuts"], -best["lens"][0]):
+                    best = cand2
+
+        if best is not None:
+            plan = best["plan"]
+            lenA, lenB, lenE = best["lens"]
+        else:
+            # Fallback a la variante 1 si algo falló
+            lenA = lenA_v1
+            lenB = lenB_v1
+            lenE = lenE_v1
+            plan: List[Dict] = []
+            if useB:
+                plan.extend(build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"]))
+            if useA:
+                plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
+            if useE:
+                plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
+    else:
+        if shape != "L" and useE:
+            lenE = usable_length_e(E, D, True)
+        plan: List[Dict] = []
+        if useB:
+            if not depthB:
+                return {"ok": False, "error": "No cabe ninguna profundidad en B por C."}
+            plan.extend(build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"]))
+        if useA:
+            if not depthA:
+                return {"ok": False, "error": "No hay profundidad válida para A."}
+            plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
+        if useE:
+            if not depthE:
+                return {"ok": False, "error": "No cabe ninguna profundidad en E por D."}
+            plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
 
     totals = {
         "totalLen": round1(sum(p["length"] for p in plan)),

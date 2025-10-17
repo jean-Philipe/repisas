@@ -100,6 +100,9 @@ def render_svg(input_data: Dict, result: Dict) -> str:
 
     # Track positions for each wall to place shelves sequentially
     wall_positions = {'A': 0, 'B': 0, 'E': 0}
+    # Detect if A fills the entire top length; if so, vertical shelves must start below A depth
+    lenA_meta = float(result.get('meta', {}).get('lenA', A))
+    a_fills_full_length = approximately_equal(lenA_meta, A)
     
     # Draw each individual shelf from the plan
     for shelf in result["plan"]:
@@ -112,7 +115,11 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasE = has_wall('E')
             dA = depth_of('A') * s if hasA else 0
             fills_full = approximately_equal(per_wall('B'), B)
-            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+            # If top shelf A spans full length, always start B below A to avoid overlap
+            if hasA and a_fills_full_length:
+                y_start = y0 + dA
+            else:
+                y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
             # Position this shelf after previous ones on wall B
             current_y = y_start + wall_positions['B']
             parts.append(f'<rect x="{x0 + w - depth}" y="{current_y}" width="{depth}" height="{length}" />')
@@ -136,7 +143,11 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasB = has_wall('B')
             dA = depth_of('A') * s if hasA else 0
             fills_full = approximately_equal(per_wall('E'), E)
-            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
+            # If top shelf A spans full length, always start E below A to avoid overlap
+            if hasA and a_fills_full_length:
+                y_start = y0 + dA
+            else:
+                y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
             # Position this shelf after previous ones on wall E
             current_y = y_start + wall_positions['E']
             parts.append(f'<rect x="{x0}" y="{current_y}" width="{depth}" height="{length}" />')
@@ -158,7 +169,10 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasE = has_wall('E')
             dA = depth_of('A') * s if hasA else 0
             fills_full = approximately_equal(per_wall('B'), B)
-            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+            if hasA and a_fills_full_length:
+                y_start = y0 + dA
+            else:
+                y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
             # Position label for this specific shelf
             current_y = y_start + wall_positions_labels['B'] + (length * s / 2)
             parts.append(f'<text class="legend" x="{x0 + w - (depth * s)/2}" y="{current_y}" text-anchor="middle">{length} × {depth}</text>')
@@ -182,7 +196,10 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasB = has_wall('B')
             dA = depth_of('A') * s if hasA else 0
             fills_full = approximately_equal(per_wall('E'), E)
-            y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
+            if hasA and a_fills_full_length:
+                y_start = y0 + dA
+            else:
+                y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasB) else y0)
             # Position label for this specific shelf
             current_y = y_start + wall_positions_labels['E'] + (length * s / 2)
             parts.append(f'<text class="legend" x="{x0 + (depth * s)/2}" y="{current_y}" text-anchor="middle">{length} × {depth}</text>')
