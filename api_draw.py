@@ -3,8 +3,20 @@ from typing import Dict
 
 def render_svg(input_data: Dict, result: Dict) -> str:
     A = float(input_data["A"]) ; B = float(input_data["B"]) ; E = float(input_data["E"]) 
+    walls = set(input_data.get("walls", []))
     base_w = A
-    base_h = max(B, E)
+    # Altura base debe reflejar únicamente los muros activos:
+    # - Si solo E está activo (o A+E), usar E
+    # - Si solo B está activo (o A+B), usar B
+    # - Si B y E están activos, usar max(B, E)
+    if ("B" in walls) and ("E" in walls):
+        base_h = max(B, E)
+    elif "B" in walls:
+        base_h = B
+    elif "E" in walls:
+        base_h = E
+    else:
+        base_h = max(B, E)
     
     # Calcular el espacio necesario para las etiquetas
     def calculate_text_width(text: str, font_size: int = 12) -> float:
@@ -142,7 +154,8 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasA = has_wall('A')
             hasB = has_wall('B')
             dA = depth_of('A') * s if hasA else 0
-            fills_full = approximately_equal(per_wall('E'), E)
+            lenE_meta = float(result.get('meta', {}).get('lenE', E))
+            fills_full = approximately_equal(lenE_meta, E)
             # If top shelf A spans full length, always start E below A to avoid overlap
             if hasA and a_fills_full_length:
                 y_start = y0 + dA
@@ -195,7 +208,8 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasA = has_wall('A')
             hasB = has_wall('B')
             dA = depth_of('A') * s if hasA else 0
-            fills_full = approximately_equal(per_wall('E'), E)
+            lenE_meta = float(result.get('meta', {}).get('lenE', E))
+            fills_full = approximately_equal(lenE_meta, E)
             if hasA and a_fills_full_length:
                 y_start = y0 + dA
             else:
