@@ -116,6 +116,32 @@ def render_svg(input_data: Dict, result: Dict) -> str:
     lenA_meta = float(result.get('meta', {}).get('lenA', A))
     a_fills_full_length = approximately_equal(lenA_meta, A)
     
+    # Check for special L-shape case: exactly 2 shelves, A > 243cm but < A wall length
+    def is_special_l_case():
+        # Must be L-shape (A and B walls only, no E)
+        if not (walls == {"A", "B"}):
+            return False
+        
+        # Must have exactly 2 shelves
+        if len(result["plan"]) != 2:
+            return False
+        
+        # Check if one shelf is for A and one for B
+        walls_in_plan = {shelf["wall"] for shelf in result["plan"]}
+        if walls_in_plan != {"A", "B"}:
+            return False
+        
+        # Find the A shelf
+        a_shelf = next((shelf for shelf in result["plan"] if shelf["wall"] == "A"), None)
+        if not a_shelf:
+            return False
+        
+        # Check A shelf length conditions: >= 243cm but < A wall length
+        a_length = a_shelf["length"]
+        return a_length >= 243 and a_length < A
+    
+    special_l_case = is_special_l_case()
+
     # Draw each individual shelf from the plan
     for shelf in result["plan"]:
         wall = shelf["wall"]
@@ -127,27 +153,99 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasE = has_wall('E')
             dA = depth_of('A') * s if hasA else 0
             fills_full = approximately_equal(per_wall('B'), B)
-            # If top shelf A spans full length, always start B below A to avoid overlap
-            if hasA and a_fills_full_length:
-                y_start = y0 + dA
+            
+            # Calculate proper scaling for B wall based on its actual height
+            # The B wall should be scaled based on its own height, not the base_h
+            b_scale = s * (B / base_h) if base_h > 0 else s
+            length_scaled = shelf["length"] * b_scale
+            
+            # Determine positioning based on which shelf occupies more of its wall
+            if hasA and not hasE:
+                # L-shape with A and B: determine which shelf occupies more of its wall
+                lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                lenB_meta = float(result.get('meta', {}).get('lenB', B))
+                a_percentage = lenA_meta / A if A > 0 else 0
+                b_percentage = lenB_meta / B if B > 0 else 0
+                b_fills_most = b_percentage > a_percentage
+                
+                if b_fills_most:
+                    # B occupies most of its wall, start from top
+                    y_start = y0
+                else:
+                    # A occupies most of its wall, start B below A to avoid overlap
+                    y_start = y0 + dA
             else:
-                y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+                # Default logic for other cases
+                if hasA and a_fills_full_length:
+                    y_start = y0 + dA
+                else:
+                    y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+            
             # Position this shelf after previous ones on wall B
             current_y = y_start + wall_positions['B']
-            parts.append(f'<rect x="{x0 + w - depth}" y="{current_y}" width="{depth}" height="{length}" />')
-            wall_positions['B'] += length
+            parts.append(f'<rect x="{x0 + w - depth}" y="{current_y}" width="{depth}" height="{length_scaled}" />')
+            wall_positions['B'] += length_scaled
             
         elif wall == 'A':  # Top wall
             useE = has_wall('E')
+            useB = has_wall('B')
             dE = depth_of('E') * s if useE else 0
-            x_start = x0
-            if useE:
-                e_fills_full = approximately_equal(per_wall('E'), E)
-                if e_fills_full:
-                    x_start = x0 + dE
-            # Position this shelf after previous ones on wall A
-            current_x = x_start + wall_positions['A']
-            parts.append(f'<rect x="{current_x}" y="{y0}" width="{length}" height="{depth}" />')
+            dB = depth_of('B') * s if useB else 0
+            
+            # Special case: L-shape with 2 shelves, A > 243cm but < A wall length
+            if special_l_case:
+                # Position A shelf at the right edge (next to B wall)
+                x_start = x0 + w - length
+            else:
+                # Determine positioning based on which shelf occupies most of its wall
+                if useE and useB:
+                    # U-shape: check if A fills the entire wall width
+                    lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                    a_fills_full_width = approximately_equal(lenA_meta, A)
+                    
+                    if a_fills_full_width:
+                        # A fills the entire wall, start from left edge
+                        x_start = x0
+                    else:
+                        # A doesn't fill the entire wall, center between E and B depths
+                        available_width = w - dE - dB
+                        x_start = x0 + dE + (available_width - length) / 2
+                elif useE:
+                    # L-shape with A and E: determine which shelf occupies more of its wall
+                    lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                    lenE_meta = float(result.get('meta', {}).get('lenE', E))
+                    a_percentage = lenA_meta / A if A > 0 else 0
+                    e_percentage = lenE_meta / E if E > 0 else 0
+                    a_fills_most = a_percentage > e_percentage
+                    
+                    if a_fills_most:
+                        # A occupies most of its wall, start from left edge
+                        x_start = x0
+                    else:
+                        # E occupies most of its wall, start after E depth
+                        x_start = x0 + dE
+                elif useB:
+                    # L-shape with A and B: determine which shelf occupies more of its wall
+                    lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                    lenB_meta = float(result.get('meta', {}).get('lenB', B))
+                    a_percentage = lenA_meta / A if A > 0 else 0
+                    b_percentage = lenB_meta / B if B > 0 else 0
+                    a_fills_most = a_percentage > b_percentage
+                    
+                    if a_fills_most:
+                        # A occupies most of its wall, start from left edge
+                        x_start = x0
+                    else:
+                        # B occupies most of its wall, start A from left edge to avoid overlap
+                        x_start = x0
+                else:
+                    # Only A wall: start from left edge
+                    x_start = x0
+                
+                # Position this shelf after previous ones on wall A
+                x_start += wall_positions['A']
+            
+            parts.append(f'<rect x="{x_start}" y="{y0}" width="{length}" height="{depth}" />')
             wall_positions['A'] += length
             
         elif wall == 'E':  # Left wall
@@ -182,25 +280,101 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             hasE = has_wall('E')
             dA = depth_of('A') * s if hasA else 0
             fills_full = approximately_equal(per_wall('B'), B)
-            if hasA and a_fills_full_length:
-                y_start = y0 + dA
+            
+            # Calculate proper scaling for B wall based on its actual height
+            # The B wall should be scaled based on its own height, not the base_h
+            b_scale = s * (B / base_h) if base_h > 0 else s
+            length_scaled = shelf["length"] * b_scale
+            
+            # Determine positioning based on which shelf occupies more of its wall
+            if hasA and not hasE:
+                # L-shape with A and B: determine which shelf occupies more of its wall
+                lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                lenB_meta = float(result.get('meta', {}).get('lenB', B))
+                a_percentage = lenA_meta / A if A > 0 else 0
+                b_percentage = lenB_meta / B if B > 0 else 0
+                b_fills_most = b_percentage > a_percentage
+                
+                if b_fills_most:
+                    # B occupies most of its wall, start from top
+                    y_start = y0
+                else:
+                    # A occupies most of its wall, start B below A to avoid overlap
+                    y_start = y0 + dA
             else:
-                y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+                # Default logic for other cases
+                if hasA and a_fills_full_length:
+                    y_start = y0 + dA
+                else:
+                    y_start = y0 if fills_full else ((y0 + dA) if (hasA and not hasE) else y0)
+            
             # Position label for this specific shelf
-            current_y = y_start + wall_positions_labels['B'] + (length * s / 2)
+            current_y = y_start + wall_positions_labels['B'] + (length_scaled / 2)
             parts.append(f'<text class="legend" x="{x0 + w - (depth * s)/2}" y="{current_y}" text-anchor="middle">{length} × {depth}</text>')
-            wall_positions_labels['B'] += length * s
+            wall_positions_labels['B'] += length_scaled
             
         elif wall == 'A':  # Top wall
             useE = has_wall('E')
+            useB = has_wall('B')
             dE = depth_of('E') * s if useE else 0
+            dB = depth_of('B') * s if useB else 0
             x_start = x0
-            if useE:
-                e_fills_full = approximately_equal(per_wall('E'), E)
-                if e_fills_full:
-                    x_start = x0 + dE
+            
+            # Special case: L-shape with 2 shelves, A > 243cm but < A wall length
+            if special_l_case:
+                # Position A shelf at the right edge (next to B wall)
+                x_start = x0 + w - (length * s)
+            else:
+                # Determine positioning based on which shelf occupies most of its wall
+                if useE and useB:
+                    # U-shape: check if A fills the entire wall width
+                    lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                    a_fills_full_width = approximately_equal(lenA_meta, A)
+                    
+                    if a_fills_full_width:
+                        # A fills the entire wall, start from left edge
+                        x_start = x0
+                    else:
+                        # A doesn't fill the entire wall, center between E and B depths
+                        available_width = w - dE - dB
+                        x_start = x0 + dE + (available_width - (length * s)) / 2
+                elif useE:
+                    # L-shape with A and E: determine which shelf occupies more of its wall
+                    lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                    lenE_meta = float(result.get('meta', {}).get('lenE', E))
+                    a_percentage = lenA_meta / A if A > 0 else 0
+                    e_percentage = lenE_meta / E if E > 0 else 0
+                    a_fills_most = a_percentage > e_percentage
+                    
+                    if a_fills_most:
+                        # A occupies most of its wall, start from left edge
+                        x_start = x0
+                    else:
+                        # E occupies most of its wall, start after E depth
+                        x_start = x0 + dE
+                elif useB:
+                    # L-shape with A and B: determine which shelf occupies more of its wall
+                    lenA_meta = float(result.get('meta', {}).get('lenA', A))
+                    lenB_meta = float(result.get('meta', {}).get('lenB', B))
+                    a_percentage = lenA_meta / A if A > 0 else 0
+                    b_percentage = lenB_meta / B if B > 0 else 0
+                    a_fills_most = a_percentage > b_percentage
+                    
+                    if a_fills_most:
+                        # A occupies most of its wall, start from left edge
+                        x_start = x0
+                    else:
+                        # B occupies most of its wall, start A from left edge to avoid overlap
+                        x_start = x0
+                else:
+                    # Only A wall: start from left edge
+                    x_start = x0
+                
+                # Position this shelf after previous ones on wall A
+                x_start += wall_positions_labels['A']
+            
             # Position label for this specific shelf
-            current_x = x_start + wall_positions_labels['A'] + (length * s / 2)
+            current_x = x_start + (length * s / 2)
             parts.append(f'<text class="legend" x="{current_x}" y="{y0 + (depth * s) + 14}" text-anchor="middle">{length} × {depth}</text>')
             wall_positions_labels['A'] += length * s
             
