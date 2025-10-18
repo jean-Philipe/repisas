@@ -4,6 +4,7 @@ DEPTHS = [68, 48, 38, 28]
 MAX_LEN = 243
 MIN_LEN = 40
 DOOR_CLEAR = 80
+MIN_CORRIDOR_WIDTH = 58  # Minimum corridor width in cm
 
 HEIGHT_OPTIONS = [
     {"h": 300, "levels": [6]},
@@ -15,6 +16,113 @@ HEIGHT_OPTIONS = [
 
 def round1(x: float) -> float:
     return round(x * 10) / 10.0
+
+def validate_corridor_width(A: float, lenA: float, depthB: Optional[int], depthE: Optional[int], useB: bool, useE: bool) -> bool:
+    """
+    Valida que el pasillo tenga al menos MIN_CORRIDOR_WIDTH cm de ancho.
+    
+    Args:
+        A: Longitud total del muro A
+        lenA: Longitud de la repisa A
+        depthB: Profundidad de la repisa B (si existe)
+        depthE: Profundidad de la repisa E (si existe)
+        useB: Si se usa el muro B
+        useE: Si se usa el muro E
+    
+    Returns:
+        True si el pasillo es válido, False en caso contrario
+    """
+    # Calcular el ancho disponible del pasillo
+    # El pasillo disponible es siempre A menos las profundidades de las repisas laterales
+    available_width = A
+    
+    # Restar las profundidades de las repisas laterales
+    if useB and depthB:
+        available_width -= depthB
+    if useE and depthE:
+        available_width -= depthE
+    
+    return available_width >= MIN_CORRIDOR_WIDTH
+
+def adjust_shelf_widths_for_corridor(A: float, lenA: float, depthB: Optional[int], depthE: Optional[int], useB: bool, useE: bool) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Ajusta automáticamente los anchos de las repisas B y E para cumplir con el pasillo mínimo.
+    
+    Args:
+        A: Longitud total del muro A
+        lenA: Longitud de la repisa A
+        depthB: Profundidad original de la repisa B
+        depthE: Profundidad original de la repisa E
+        useB: Si se usa el muro B
+        useE: Si se usa el muro E
+    
+    Returns:
+        Tupla con las profundidades ajustadas (depthB_adj, depthE_adj)
+    """
+    # Calcular el ancho mínimo necesario para el pasillo
+    min_corridor_needed = MIN_CORRIDOR_WIDTH
+    # El espacio disponible para repisas es el ancho total menos el pasillo mínimo
+    available_for_shelves = A - min_corridor_needed
+    
+    # Si no hay espacio suficiente para ninguna repisa, retornar None
+    if available_for_shelves <= 0:
+        return None, None
+    
+    # Si hay espacio pero es muy poco, usar el mínimo posible
+    if available_for_shelves < 28:  # Mínimo para una repisa
+        return None, None
+    
+    # Distribuir el espacio disponible entre las repisas
+    depthB_adj = depthB
+    depthE_adj = depthE
+    
+    if useB and useE and depthB and depthE:
+        # Ambas repisas: distribuir proporcionalmente
+        total_original = depthB + depthE
+        if total_original > available_for_shelves:
+            # Si no hay espacio para ambas repisas con mínimo, usar solo una
+            if available_for_shelves < 56:  # 28 + 28 mínimo
+                # Usar solo la repisa más grande
+                if depthB >= depthE:
+                    depthB_adj = min(depthB, available_for_shelves)
+                    depthE_adj = None
+                else:
+                    depthE_adj = min(depthE, available_for_shelves)
+                    depthB_adj = None
+            else:
+                # Reducir proporcionalmente
+                ratio = available_for_shelves / total_original
+                depthB_adj = max(28, int(depthB * ratio))  # Mínimo 28cm
+                depthE_adj = max(28, int(depthE * ratio))  # Mínimo 28cm
+                
+                # Ajustar si aún no cumple
+                while depthB_adj + depthE_adj > available_for_shelves:
+                    if depthB_adj > depthE_adj:
+                        depthB_adj = max(28, depthB_adj - 1)
+                    else:
+                        depthE_adj = max(28, depthE_adj - 1)
+        else:
+            # No hay necesidad de reducir
+            depthB_adj = depthB
+            depthE_adj = depthE
+    
+    elif useB and depthB:
+        # Solo repisa B
+        if depthB > available_for_shelves:
+            depthB_adj = min(depthB, available_for_shelves)
+        else:
+            depthB_adj = depthB
+        depthE_adj = None
+    
+    elif useE and depthE:
+        # Solo repisa E
+        if depthE > available_for_shelves:
+            depthE_adj = min(depthE, available_for_shelves)
+        else:
+            depthE_adj = depthE
+        depthB_adj = None
+    
+    return depthB_adj, depthE_adj
 
 def calculate_waste(plan: List[Dict]) -> float:
     """
@@ -64,26 +172,53 @@ def optimize_l_shape_planning(A: float, E: float, D: float, depthA: int, depthE:
 
     usableE = usable_length_e(E, D, True)
 
-    # Estrategia 1: A completa, E reducido
-    lenA_1 = A
-    lenE_1 = max(0.0, usableE - depthA)
-    plan_1: List[Dict] = []
-    plan_1.extend(build_shelves_for_wall("A", lenA_1, depthA, hl["height"], hl["levels"]))
-    plan_1.extend(build_shelves_for_wall("E", lenE_1, depthE, hl["height"], hl["levels"]))
-
-    # Estrategia 2: E completa, A reducido
-    lenE_2 = usableE
-    lenA_2 = max(0.0, A - depthE)
-    plan_2: List[Dict] = []
-    plan_2.extend(build_shelves_for_wall("E", lenE_2, depthE, hl["height"], hl["levels"]))
-    plan_2.extend(build_shelves_for_wall("A", lenA_2, depthA, hl["height"], hl["levels"]))
-
-    q1 = evaluate_plan_quality(plan_1)
-    q2 = evaluate_plan_quality(plan_2)
-
-    if q2 < q1:
-        return lenA_2, lenE_2, plan_2
-    return lenA_1, lenE_1, plan_1
+    # A siempre usa su longitud completa
+    lenA = A
+    lenE = max(0.0, usableE - depthA)
+    
+    # Validar que la longitud de E sea válida
+    if not validate_shelf_length(lenE):
+        # Si la longitud de E es menor al mínimo, no usar repisa E
+        depthE = None
+        lenE = 0.0
+    else:
+        # Validar pasillo - si no es válido, ajustar solo la profundidad de E
+        if not validate_corridor_width(A, lenA, None, depthE, False, useE):
+            # Ajustar solo la profundidad de E para cumplir el pasillo
+            _, depthE_adj = adjust_shelf_widths_for_corridor(A, lenA, None, depthE, False, useE)
+            if depthE_adj is not None:
+                depthE = depthE_adj
+                # Recalcular lenE con la nueva profundidad
+                lenE = max(0.0, usableE - depthA)
+                # Validar nuevamente que la longitud sea válida
+                if not validate_shelf_length(lenE):
+                    depthE = None
+                    lenE = 0.0
+            # Si no se puede ajustar, usar la profundidad mínima posible
+            else:
+                # Calcular la profundidad máxima posible para E
+                max_depth_E = A - lenA - MIN_CORRIDOR_WIDTH
+                if max_depth_E >= 28:  # Mínimo viable
+                    depthE = int(max_depth_E)
+                    # Recalcular lenE con la nueva profundidad
+                    lenE = max(0.0, usableE - depthA)
+                    # Validar nuevamente que la longitud sea válida
+                    if not validate_shelf_length(lenE):
+                        depthE = None
+                        lenE = 0.0
+                else:
+                    # Si no hay espacio para E, no usar repisa E
+                    depthE = None
+                    lenE = 0.0
+    
+    # Construir el plan
+    plan: List[Dict] = []
+    if useA and depthA:
+        plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
+    if useE and depthE:
+        plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
+    
+    return lenA, lenE, plan
 
 def pick_max_le(options: List[int], limit: float) -> Optional[int]:
     for v in options:
@@ -103,37 +238,278 @@ def pack_lengths(target: float) -> List[float]:
     if target <= 0:
         return []
     if target <= MAX_LEN:
+        # Si la longitud total es menor al mínimo, no crear repisa
+        if target < MIN_LEN:
+            return []
         return [round1(target)]
     n_full = int(target // MAX_LEN)
     rem = target - n_full * MAX_LEN
     if rem == 0:
         return [MAX_LEN] * n_full
-    # Siempre incluir el remanente, aunque sea menor a MIN_LEN, para cubrir 100% del muro
-    return [MAX_LEN] * n_full + [round1(rem)]
+    # Solo incluir el remanente si es mayor o igual al mínimo
+    if rem >= MIN_LEN:
+        return [MAX_LEN] * n_full + [round1(rem)]
+    else:
+        # Si el remanente es menor al mínimo, no incluirlo
+        return [MAX_LEN] * n_full
 
 def max_depth_per_wall(C: float, D: float) -> Dict[str, Optional[int]]:
-    b = pick_max_le(DEPTHS, C if C is not None else float("inf"))
-    e = pick_max_le(DEPTHS, D if D is not None else float("inf"))
+    # When C=0 or D=0, there are no space restrictions, use maximum depth
+    b = pick_max_le(DEPTHS, C if C > 0 else float("inf"))
+    e = pick_max_le(DEPTHS, D if D > 0 else float("inf"))
     a = pick_max_le(DEPTHS, float("inf"))
     return {"A": a, "B": b, "E": e}
 
 def usable_length_e(E: float, D: float, use_e: bool) -> float:
     if not use_e:
         return E
+    # When D=0, there are no space restrictions, use full length
     if D == 0:
-        return max(0.0, E - DOOR_CLEAR)
+        return E
     return E
 
 def usable_length_b(B: float, C: float, use_b: bool) -> float:
     if not use_b:
         return B
+    # When C=0, there are no space restrictions, use full length
     if C == 0:
-        return max(0.0, B - DOOR_CLEAR)
+        return B
     return B
 
 def build_shelves_for_wall(wall: str, usable_len: float, depth: int, height: int, levels: int) -> List[Dict]:
     pieces = pack_lengths(usable_len)
     return [{"wall": wall, "length": l, "depth": depth, "height": height, "levels": levels} for l in pieces]
+
+def validate_shelf_length(length: float) -> bool:
+    """
+    Valida que la longitud de una repisa sea válida (mayor o igual al mínimo).
+    """
+    return length >= MIN_LEN
+
+def generate_depth_combinations(C: float, D: float) -> List[Dict[str, int]]:
+    """
+    Genera todas las combinaciones posibles de profundidades para los muros.
+    
+    Args:
+        C: Restricción de espacio para el muro B
+        D: Restricción de espacio para el muro E
+    
+    Returns:
+        Lista de diccionarios con todas las combinaciones válidas de profundidades
+    """
+    combinations = []
+    
+    # Obtener profundidades válidas para cada muro
+    valid_depths_b = [d for d in DEPTHS if d <= C] if C > 0 else DEPTHS
+    valid_depths_e = [d for d in DEPTHS if d <= D] if D > 0 else DEPTHS
+    valid_depths_a = DEPTHS  # A no tiene restricciones de espacio
+    
+    # Generar todas las combinaciones
+    for depth_a in valid_depths_a:
+        for depth_b in valid_depths_b:
+            for depth_e in valid_depths_e:
+                combinations.append({
+                    "A": depth_a,
+                    "B": depth_b,
+                    "E": depth_e
+                })
+    
+    return combinations
+
+def evaluate_combination(combination: Dict[str, int], A: float, B: float, C: float, D: float, E: float, 
+                        walls: List[str], shape: str, hl: Dict) -> Dict:
+    """
+    Evalúa una combinación específica de profundidades.
+    
+    Returns:
+        Diccionario con el resultado de la evaluación
+    """
+    depthA = combination["A"]
+    depthB = combination["B"] 
+    depthE = combination["E"]
+    
+    useA = "A" in walls
+    useB = "B" in walls
+    useE = "E" in walls
+    
+    # Calcular longitudes según la forma
+    if shape == "L":
+        if useA and useB and not useE:
+            # Forma L con A y B
+            lenA = A
+            Bu = usable_length_b(B, C, True)
+            lenB = max(0.0, Bu - depthA)
+            
+            # Validar longitudes mínimas
+            validA = validate_shelf_length(lenA)
+            validB = validate_shelf_length(lenB)
+            
+            # Validar pasillo
+            corridor_valid = validate_corridor_width(A, lenA, depthB, None, useB, False)
+            
+            if validA and validB and corridor_valid:
+                # Crear plan
+                plan = []
+                if useA:
+                    plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
+                if useB:
+                    plan.extend(build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"]))
+                
+                return {
+                    "valid": True,
+                    "plan": plan,
+                    "lenA": lenA,
+                    "lenB": lenB,
+                    "lenE": 0.0,
+                    "depthA": depthA,
+                    "depthB": depthB,
+                    "depthE": None,
+                    "complete_form": True
+                }
+            else:
+                return {"valid": False, "reason": "Invalid lengths or corridor"}
+                
+        elif useA and useE and not useB:
+            # Forma L con A y E
+            lenA = A
+            Eu = usable_length_e(E, D, True)
+            lenE = max(0.0, Eu - depthA)
+            
+            # Validar longitudes mínimas
+            validA = validate_shelf_length(lenA)
+            validE = validate_shelf_length(lenE)
+            
+            # Validar pasillo
+            corridor_valid = validate_corridor_width(A, lenA, None, depthE, False, useE)
+            
+            if validA and validE and corridor_valid:
+                # Crear plan
+                plan = []
+                if useA:
+                    plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
+                if useE:
+                    plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
+                
+                return {
+                    "valid": True,
+                    "plan": plan,
+                    "lenA": lenA,
+                    "lenB": 0.0,
+                    "lenE": lenE,
+                    "depthA": depthA,
+                    "depthB": None,
+                    "depthE": depthE,
+                    "complete_form": True
+                }
+            else:
+                return {"valid": False, "reason": "Invalid lengths or corridor"}
+    
+    elif shape == "U":
+        if useA and useB and useE:
+            # Forma U con A, B y E
+            lenA = A
+            lenB = usable_length_b(B, C, True)
+            lenE = usable_length_e(E, D, True)
+            
+            # Ajustar longitudes para evitar superposiciones
+            lenB = max(0.0, lenB - depthA)
+            lenE = max(0.0, lenE - depthA)
+            
+            # Validar longitudes mínimas
+            validA = validate_shelf_length(lenA)
+            validB = validate_shelf_length(lenB)
+            validE = validate_shelf_length(lenE)
+            
+            # Validar pasillo
+            corridor_valid = validate_corridor_width(A, lenA, depthB, depthE, useB, useE)
+            
+            if validA and validB and validE and corridor_valid:
+                # Crear plan
+                plan = []
+                if useA:
+                    plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
+                if useB:
+                    plan.extend(build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"]))
+                if useE:
+                    plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
+                
+                return {
+                    "valid": True,
+                    "plan": plan,
+                    "lenA": lenA,
+                    "lenB": lenB,
+                    "lenE": lenE,
+                    "depthA": depthA,
+                    "depthB": depthB,
+                    "depthE": depthE,
+                    "complete_form": True
+                }
+            else:
+                return {"valid": False, "reason": "Invalid lengths or corridor"}
+    
+    # Para otras formas o configuraciones
+    return {"valid": False, "reason": "Unsupported configuration"}
+
+def find_best_combination(A: float, B: float, C: float, D: float, E: float, 
+                         walls: List[str], shape: str, hl: Dict) -> Dict:
+    """
+    Encuentra la mejor combinación de profundidades que permita crear la forma solicitada.
+    
+    Prioriza:
+    1. Combinaciones que permitan crear la forma completa
+    2. Mejor calidad según los criterios existentes
+    """
+    combinations = generate_depth_combinations(C, D)
+    valid_combinations = []
+    
+    # Evaluar todas las combinaciones
+    for combination in combinations:
+        result = evaluate_combination(combination, A, B, C, D, E, walls, shape, hl)
+        if result["valid"]:
+            # Calcular métricas de calidad
+            plan = result["plan"]
+            pieces, waste, cuts, total_len = evaluate_plan_quality(plan)
+            
+            valid_combinations.append({
+                "combination": combination,
+                "result": result,
+                "quality": (pieces, waste, cuts, total_len),
+                "score": pieces * 1000 + waste + cuts * 100 + total_len  # Menor es mejor
+            })
+    
+    if not valid_combinations:
+        return {"ok": False, "error": "No es posible armar la forma solicitada con las restricciones dadas."}
+    
+    # Ordenar por score (menor es mejor)
+    valid_combinations.sort(key=lambda x: x["score"])
+    best = valid_combinations[0]
+    
+    # Construir respuesta
+    plan = best["result"]["plan"]
+    totals = {
+        "totalLen": round1(sum(p["length"] for p in plan)),
+        "pieces": len(plan),
+        "cuts": sum(1 for p in plan if p["length"] < MAX_LEN),
+    }
+    
+    meta = {
+        "depthMax": {
+            "A": best["result"]["depthA"],
+            "B": best["result"]["depthB"],
+            "E": best["result"]["depthE"]
+        },
+        "hl": hl,
+        "lenA": round1(best["result"]["lenA"]),
+        "lenB": round1(best["result"]["lenB"]),
+        "lenE": round1(best["result"]["lenE"]),
+    }
+    
+    return {
+        "ok": True,
+        "plan": plan,
+        "totals": totals,
+        "meta": meta
+    }
 
 def plan_shelves_py(params: Dict) -> Dict:
     A = float(params.get("A", 0))
@@ -143,177 +519,11 @@ def plan_shelves_py(params: Dict) -> Dict:
     E = float(params.get("E", 0))
     room_height = float(params.get("roomHeight", params.get("H", 0)))
     walls = params.get("walls", [])
-    shape = params.get("shape", "L")
+    shape = params.get("shape", "L").strip()  # Normalizar eliminando espacios
 
     hl = pick_height_and_levels(room_height)
     if not hl:
         return {"ok": False, "error": "Ninguna altura cumple la holgura de 30 cm al cielo."}
 
-    depth_max = max_depth_per_wall(C, D)
-    useA = "A" in walls
-    useB = "B" in walls
-    useE = "E" in walls
-
-    def choose_depth_common(ws: List[str]) -> Optional[int]:
-        cands = [depth_max[w] for w in ws if depth_max.get(w) is not None]
-        if not cands:
-            return None
-        return min(cands)
-
-    depthA = depth_max.get("A")
-    depthB = depth_max.get("B")
-    depthE = depth_max.get("E")
-
-    if shape == "U" and useA and useB and useE:
-        common = choose_depth_common(["B", "A", "E"])
-        if common:
-            depthA = depthB = depthE = common
-
-    lenA, lenB, lenE = A, usable_length_b(B, C, True), E
-    if shape == "L":
-        useOnlyB = useA and useB and not useE
-        useOnlyE = useA and useE and not useB
-        
-        # Para forma L, evaluar opciones cuando hay restricciones de longitud
-        if useOnlyB and depthA and depthB:
-            # Opción 1: A completa, B reducido
-            lenA_opt1 = A
-            Bu = usable_length_b(B, C, True)
-            lenB_opt1 = max(0.0, Bu - depthA)
-            
-            # Opción 2: A reducido, B completo
-            lenA_opt2 = max(0.0, A - (depthB or 0))
-            lenB_opt2 = Bu
-            
-            # Evaluar ambas opciones
-            plan_opt1 = []
-            if useA:
-                plan_opt1.extend(build_shelves_for_wall("A", lenA_opt1, depthA, hl["height"], hl["levels"]))
-            if useB:
-                plan_opt1.extend(build_shelves_for_wall("B", lenB_opt1, depthB, hl["height"], hl["levels"]))
-            
-            plan_opt2 = []
-            if useA:
-                plan_opt2.extend(build_shelves_for_wall("A", lenA_opt2, depthA, hl["height"], hl["levels"]))
-            if useB:
-                plan_opt2.extend(build_shelves_for_wall("B", lenB_opt2, depthB, hl["height"], hl["levels"]))
-            
-            # Elegir la opción con mejor calidad (prioridad: menos piezas, menos merma, menos cortes)
-            quality1 = evaluate_plan_quality(plan_opt1)
-            quality2 = evaluate_plan_quality(plan_opt2)
-            
-            if quality1 <= quality2:
-                lenA = lenA_opt1
-                lenB = lenB_opt1
-            else:
-                lenA = lenA_opt2
-                lenB = lenB_opt2
-                
-        elif useOnlyE and depthA and depthE:
-            # Usar la función de optimización especializada para forma L con A y E
-            lenA, lenE, plan = optimize_l_shape_planning(A, E, D, depthA, depthE, hl, useA, useE)
-        else:
-            if useA and useB:
-                lenA = max(0.0, A - (depthB or 0))
-            if useA and useE:
-                lenA = max(0.0, A - (depthE or 0))
-            if useE:
-                lenE = usable_length_e(E, D, True)
-    # Para forma U con A, B y E activos, evaluar combinaciones y elegir la que minimiza piezas
-    if shape == "U" and useA and useB and useE:
-        # Variante 1 (actual): restar profundidades laterales a A
-        lenA_v1 = max(0.0, A - (depthB or 0) - (depthE or 0))
-        lenB_v1 = usable_length_b(B, C, True)
-        lenE_v1 = usable_length_e(E, D, True)
-
-        # Variante 2 (priorizar A completa): usar A completa y descontar profundidad de A a B y E
-        lenA_v2 = A
-        lenB_v2 = max(0.0, usable_length_b(B, C, True) - (depthA or 0))
-        lenE_v2 = max(0.0, usable_length_e(E, D, True) - (depthA or 0))
-
-        def build_plan_lengths(la: float, lb: float, le: float):
-            plan_local: List[Dict] = []
-            if useB:
-                if not depthB:
-                    return None
-                plan_local.extend(build_shelves_for_wall("B", lb, depthB, hl["height"], hl["levels"]))
-            if useA:
-                if not depthA:
-                    return None
-                plan_local.extend(build_shelves_for_wall("A", la, depthA, hl["height"], hl["levels"]))
-            if useE:
-                if not depthE:
-                    return None
-                plan_local.extend(build_shelves_for_wall("E", le, depthE, hl["height"], hl["levels"]))
-            pieces = len(plan_local)
-            cuts = sum(1 for p in plan_local if p["length"] < MAX_LEN)
-            total_len = sum(p["length"] for p in plan_local)
-            return {
-                "plan": plan_local,
-                "pieces": pieces,
-                "cuts": cuts,
-                "tot_len": total_len,
-                "lens": (round1(la), round1(lb), round1(le)),
-            }
-
-        cand1 = build_plan_lengths(lenA_v1, lenB_v1, lenE_v1)
-        cand2 = build_plan_lengths(lenA_v2, lenB_v2, lenE_v2)
-
-        # Elegir el candidato con mejor calidad (prioridad: menos piezas, menos merma, menos cortes)
-        best = cand1
-        if cand2 is not None:
-            if best is None:
-                best = cand2
-            else:
-                # Evaluar calidad de ambos candidatos
-                quality1 = evaluate_plan_quality(cand1["plan"])
-                quality2 = evaluate_plan_quality(cand2["plan"])
-                
-                if quality2 < quality1:
-                    best = cand2
-
-        if best is not None:
-            plan = best["plan"]
-            lenA, lenB, lenE = best["lens"]
-        else:
-            # Fallback a la variante 1 si algo falló
-            lenA = lenA_v1
-            lenB = lenB_v1
-            lenE = lenE_v1
-            plan: List[Dict] = []
-            if useB:
-                plan.extend(build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"]))
-            if useA:
-                plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
-            if useE:
-                plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
-    else:
-        if shape != "L" and useE:
-            lenE = usable_length_e(E, D, True)
-        plan: List[Dict] = []
-        if useB:
-            if not depthB:
-                return {"ok": False, "error": "No cabe ninguna profundidad en B por C."}
-            plan.extend(build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"]))
-        if useA:
-            if not depthA:
-                return {"ok": False, "error": "No hay profundidad válida para A."}
-            plan.extend(build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"]))
-        if useE:
-            if not depthE:
-                return {"ok": False, "error": "No cabe ninguna profundidad en E por D."}
-            plan.extend(build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"]))
-
-    totals = {
-        "totalLen": round1(sum(p["length"] for p in plan)),
-        "pieces": len(plan),
-        "cuts": sum(1 for p in plan if p["length"] < MAX_LEN),
-    }
-    meta = {
-        "depthMax": depth_max,
-        "hl": hl,
-        "lenA": round1(lenA),
-        "lenB": round1(lenB),
-        "lenE": round1(lenE),
-    }
-    return {"ok": True, "plan": plan, "totals": totals, "meta": meta}
+    # Usar el nuevo sistema de evaluación de combinaciones
+    return find_best_combination(A, B, C, D, E, walls, shape, hl)
