@@ -793,8 +793,72 @@ def evaluate_combination(combination: Dict[str, int], A: float, B: float, C: flo
             else:
                 return {"valid": False, "reason": f"No se pueden crear repisas en forma U con muros A, B y E. Verifique que: 1) Las longitudes de A ({A} cm), B ({B} cm) y E ({E} cm) sean suficientes, 2) Los espacios disponibles C ({C} cm) y D ({D} cm) permitan las profundidades mínimas (28 cm), 3) El pasillo tenga al menos {MIN_CORRIDOR_WIDTH} cm de ancho."}
     
+    # Manejar repisas de un solo muro (shape="1" o cualquier forma con un solo muro)
+    if len(walls) == 1:
+        wall = walls[0]
+        
+        if wall == "A":
+            # Repisa en muro A - usar longitud completa
+            lenA = A
+            if validate_shelf_length(lenA):
+                plan = build_shelves_for_wall("A", lenA, depthA, hl["height"], hl["levels"])
+                return {
+                    "valid": True,
+                    "plan": plan,
+                    "lenA": lenA,
+                    "lenB": 0.0,
+                    "lenE": 0.0,
+                    "depthA": depthA,
+                    "depthB": None,
+                    "depthE": None,
+                    "complete_form": True
+                }
+            else:
+                return {"valid": False, "reason": f"No se puede crear repisa en muro A. La longitud ({lenA} cm) es menor al mínimo requerido ({MIN_LEN} cm)."}
+        
+        elif wall == "B":
+            # Repisa en muro B - usar longitud completa
+            lenB = usable_length_b(B, C, True, D)
+            if validate_shelf_length(lenB):
+                plan = build_shelves_for_wall("B", lenB, depthB, hl["height"], hl["levels"])
+                return {
+                    "valid": True,
+                    "plan": plan,
+                    "lenA": 0.0,
+                    "lenB": lenB,
+                    "lenE": 0.0,
+                    "depthA": None,
+                    "depthB": depthB,
+                    "depthE": None,
+                    "complete_form": True
+                }
+            else:
+                return {"valid": False, "reason": f"No se puede crear repisa en muro B. La longitud ({lenB} cm) es menor al mínimo requerido ({MIN_LEN} cm)."}
+        
+        elif wall == "E":
+            # Repisa en muro E - usar longitud completa
+            lenE = usable_length_e(E, D, True, C)
+            if validate_shelf_length(lenE):
+                plan = build_shelves_for_wall("E", lenE, depthE, hl["height"], hl["levels"])
+                return {
+                    "valid": True,
+                    "plan": plan,
+                    "lenA": 0.0,
+                    "lenB": 0.0,
+                    "lenE": lenE,
+                    "depthA": None,
+                    "depthB": None,
+                    "depthE": depthE,
+                    "complete_form": True
+                }
+            else:
+                return {"valid": False, "reason": f"No se puede crear repisa en muro E. La longitud ({lenE} cm) es menor al mínimo requerido ({MIN_LEN} cm)."}
+        
+        else:
+            return {"valid": False, "reason": f"Muro '{wall}' no reconocido. Los muros válidos son A, B y E."}
+    
     # Para otras formas o configuraciones
-    return {"valid": False, "reason": f"Configuración no soportada: forma '{shape}' con muros {walls}. Las formas soportadas son 'L' (con muros A-B o A-E) y 'U' (con muros A-B-E)."}
+    return {"valid": False, "reason": f"Configuración no soportada: forma '{shape}' con muros {walls}. Las formas soportadas son 'L' (con muros A-B o A-E), 'U' (con muros A-B-E) y repisas de un solo muro."}
 
 def find_best_combination(A: float, B: float, C: float, D: float, E: float, 
                          walls: List[str], shape: str, hl: Dict) -> Dict:

@@ -4,34 +4,62 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Cotización de Repisas</title>
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #111; }
+        #mainLayout { display: flex; gap: 20px; align-items: flex-start; }
+        #shelfForm p { margin: 10px 0; }
+        #shelfForm label { font-weight: 600; }
+        #shelfForm input[type="text"],
+        #shelfForm input[type="email"],
+        #shelfForm input[type="tel"],
+        #whatsappForm input[type="text"],
+        #whatsappForm input[type="email"],
+        #whatsappForm input[type="tel"] { width: 100%; max-width: 380px; padding: 8px 10px; border: 1px solid #bbb; border-radius: 6px; font-size: 14px; outline: none; }
+        #shelfForm input:focus, #whatsappForm input:focus { border-color: #666; }
+        #intro { margin: 10px 0 20px; color: #333; }
+        #intro p { margin: 8px 0; }
+        #resultContainer svg { width: 100%; height: auto; max-width: 100%; }
+        @media (max-width: 768px) {
+            #mainLayout { flex-direction: column; }
+            #resultContainer { margin-top: 12px; }
+        }
+    </style>
 </head>
 <body>
     <h1>Sistema de Cotización de Repisas</h1>
+    <div id="intro">
+        <p>
+            Aquí puedes previsualizar posibilidades de repisas de manera automática y solicitar que te llegue una cotización avanzada por WhatsApp. Si algo no te gusta del resultado, solicita la cotización y conversemos por WhatsApp de inmediato.
+        </p>
+        <p>
+            En caso de que uno de tus muros C o D midan 0, asumiremos que tu puerta está ahí e intentaremos dejar un espacio de 80 cm entre la repisa y la puerta. Si la puerta no es impedimento, solicita la cotización por WhatsApp y hacemos la modificación mientras conversamos.
+        </p>
+    </div>
     
-    <div style="display: flex; gap: 20px;">
+    <div id="mainLayout" style="display: flex; gap: 20px;">
         <div style="flex: 1;">
             <form id="shelfForm">
                 <h3>Dimensiones de los Muros</h3>
                 <p>
-                    <label>Muro A (cm): <input type="number" id="wallA" name="A" value="300" min="0" step="0.1" required></label>
+                    <label class="form-field">Muro A (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallA" name="A" value="300" required></label>
                 </p>
                 <p>
-                    <label>Muro B (cm): <input type="number" id="wallB" name="B" value="350" min="0" step="0.1" required></label>
+                    <label class="form-field">Muro B (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallB" name="B" value="350" required></label>
                 </p>
                 <p>
-                    <label>Muro C (cm): <input type="number" id="wallC" name="C" value="150" min="0" step="0.1" required></label>
+                    <label class="form-field">Muro C (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallC" name="C" value="150" required></label>
                 </p>
                 <p>
-                    <label>Muro D (cm): <input type="number" id="wallD" name="D" value="80" min="0" step="0.1" required></label>
+                    <label class="form-field">Muro D (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallD" name="D" value="80" required></label>
                 </p>
                 <p>
-                    <label>Muro E (cm): <input type="number" id="wallE" name="E" value="350" min="0" step="0.1" required></label>
+                    <label class="form-field">Muro E (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallE" name="E" value="350" required></label>
                 </p>
                 <p>
-                    <label>Altura del Cuarto (cm): <input type="number" id="roomHeight" name="roomHeight" value="250" min="0" step="0.1" required></label>
+                    <label class="form-field">Altura de la bodega (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="roomHeight" name="roomHeight" value="250" required></label>
                 </p>
 
-                <h3>Forma del Cuarto</h3>
+                <h3>Forma de la bodega</h3>
                 <p>
                     <label><input type="radio" name="shape" value="L" id="shapeL"> Forma L</label>
                 </p>
@@ -101,6 +129,27 @@
     </div>
 
     <script>
+        // Estilos básicos para formularios y campos
+        const style = document.createElement('style');
+        style.textContent = `
+        .form-field label { display: inline-block; font-weight: 600; margin-bottom: 6px; }
+        .form-field input[type="text"],
+        .form-field input[type="email"],
+        .form-field input[type="tel"],
+        .number-input {
+            width: 100%;
+            max-width: 320px;
+            padding: 8px 10px;
+            border: 1px solid #bbb;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+        }
+        .form-field input:focus, .number-input:focus { border-color: #666; }
+        .intro { margin: 10px 0 20px; color: #333; }
+        .intro p { margin: 8px 0; }
+        `;
+        document.head.appendChild(style);
         // ===== CONSTANTES Y CONFIGURACIÓN =====
         const DEPTHS = [68, 48, 38, 28];
         const MAX_LEN = 243;
@@ -718,7 +767,73 @@
                 }
             }
             
-            return { valid: false, reason: `Configuración no soportada: forma '${shape}' con muros ${walls}. Las formas soportadas son 'L' (con muros A-B o A-E) y 'U' (con muros A-B-E).` };
+            // Manejar repisas de un solo muro (shape="1" o cualquier forma con un solo muro)
+            if (walls.length === 1) {
+                const wall = walls[0];
+                
+                if (wall === "A") {
+                    // Repisa en muro A - usar longitud completa
+                    const lenA = A;
+                    if (validateShelfLength(lenA)) {
+                        const plan = buildShelvesForWall("A", lenA, depthA, hl.height, hl.levels);
+                        return {
+                            valid: true,
+                            plan: plan,
+                            lenA: lenA,
+                            lenB: 0.0,
+                            lenE: 0.0,
+                            depthA: depthA,
+                            depthB: null,
+                            depthE: null,
+                            complete_form: true
+                        };
+                    } else {
+                        return { valid: false, reason: `No se puede crear repisa en muro A. La longitud (${lenA} cm) es menor al mínimo requerido (${MIN_LEN} cm).` };
+                    }
+                } else if (wall === "B") {
+                    // Repisa en muro B - usar longitud completa
+                    const lenB = usableLengthB(B, C, true, D);
+                    if (validateShelfLength(lenB)) {
+                        const plan = buildShelvesForWall("B", lenB, depthB, hl.height, hl.levels);
+                        return {
+                            valid: true,
+                            plan: plan,
+                            lenA: 0.0,
+                            lenB: lenB,
+                            lenE: 0.0,
+                            depthA: null,
+                            depthB: depthB,
+                            depthE: null,
+                            complete_form: true
+                        };
+                    } else {
+                        return { valid: false, reason: `No se puede crear repisa en muro B. La longitud (${lenB} cm) es menor al mínimo requerido (${MIN_LEN} cm).` };
+                    }
+                } else if (wall === "E") {
+                    // Repisa en muro E - usar longitud completa
+                    const lenE = usableLengthE(E, D, true, C);
+                    if (validateShelfLength(lenE)) {
+                        const plan = buildShelvesForWall("E", lenE, depthE, hl.height, hl.levels);
+                        return {
+                            valid: true,
+                            plan: plan,
+                            lenA: 0.0,
+                            lenB: 0.0,
+                            lenE: lenE,
+                            depthA: null,
+                            depthB: null,
+                            depthE: depthE,
+                            complete_form: true
+                        };
+                    } else {
+                        return { valid: false, reason: `No se puede crear repisa en muro E. La longitud (${lenE} cm) es menor al mínimo requerido (${MIN_LEN} cm).` };
+                    }
+                } else {
+                    return { valid: false, reason: `Muro '${wall}' no reconocido. Los muros válidos son A, B y E.` };
+                }
+            }
+            
+            return { valid: false, reason: `Configuración no soportada: forma '${shape}' con muros ${walls}. Las formas soportadas son 'L' (con muros A-B o A-E), 'U' (con muros A-B-E) y repisas de un solo muro.` };
         }
 
         function findBestCombination(A, B, C, D, E, walls, shape, hl) {
@@ -894,7 +1009,7 @@
 
             const parts = [];
             parts.push(
-                `<svg viewBox="0 0 ${canvasW} ${canvasH}" width="${canvasW}" height="${canvasH}"\n` +
+                `<svg viewBox="0 0 ${canvasW} ${canvasH}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet"\n` +
                 `     xmlns="http://www.w3.org/2000/svg" text-rendering="optimizeLegibility">`
             );
             
@@ -1261,7 +1376,15 @@
         // ===== FUNCIONES DE INTERFAZ =====
         document.addEventListener('DOMContentLoaded', function() {
             initializeForm();
+            // Seleccionar forma L por defecto y mostrar opciones
+            const shapeL = document.getElementById('shapeL');
+            if (shapeL) {
+                shapeL.checked = true;
+                selectShape('L');
+            }
             setupEventListeners();
+            // Dibujo inicial dinámico (solo muros)
+            updateLivePreview();
         });
 
         function initializeForm() {
@@ -1279,12 +1402,31 @@
                 radio.addEventListener('change', function() {
                     if (this.checked) {
                         selectShape(this.value);
+                        updateLivePreview();
                     }
                 });
             });
 
             document.getElementById('shelfForm').addEventListener('submit', handleFormSubmit);
             document.getElementById('whatsappForm').addEventListener('submit', handleWhatsAppRequest);
+
+            // Actualizar vista previa en vivo al escribir
+            ['wallA','wallB','wallC','wallD','wallE','roomHeight'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', updateLivePreview);
+                }
+            });
+
+            // Cambios en selección de muros
+            const wallOptionsContainer = document.getElementById('wallOptions');
+            if (wallOptionsContainer) {
+                wallOptionsContainer.addEventListener('change', function(e) {
+                    if (e.target && e.target.name === 'wallSelection') {
+                        updateLivePreview();
+                    }
+                });
+            }
         }
 
         function selectShape(shape) {
@@ -1312,6 +1454,8 @@
             // Marcar por defecto la primera opción para todas las formas
             const firstRadio = wallOptionsContainer.querySelector('input[type="radio"]');
             if (firstRadio) firstRadio.checked = true;
+            // Actualizar vista previa al cambiar opciones
+            updateLivePreview();
         }
 
         function handleFormSubmit(e) {
@@ -1380,6 +1524,102 @@
                 showError(`Error: ${error.message}`);
             } finally {
                 showLoading(false);
+            }
+        }
+
+        // ===== PREVISUALIZACIÓN EN VIVO (SOLO MUROS) =====
+        function safeParseFloat(v, fallback) {
+            const n = parseFloat(v);
+            return isNaN(n) ? fallback : n;
+        }
+
+        function buildInputDataFromForm() {
+            const formEl = document.getElementById('shelfForm');
+            const data = new FormData(formEl);
+            const selectedWalls = getSelectedWalls();
+            const shapeRadio = document.querySelector('input[name="shape"]:checked');
+            return {
+                A: safeParseFloat(data.get('A'), 300),
+                B: safeParseFloat(data.get('B'), 300),
+                C: safeParseFloat(data.get('C'), 150),
+                D: safeParseFloat(data.get('D'), 80),
+                E: safeParseFloat(data.get('E'), 300),
+                roomHeight: safeParseFloat(data.get('roomHeight'), 250),
+                shape: shapeRadio ? shapeRadio.value : 'L',
+                walls: selectedWalls.length ? selectedWalls : ['A','B']
+            };
+        }
+
+        function renderSvgRoom(inputData) {
+            const A = parseFloat(inputData.A);
+            const B = parseFloat(inputData.B);
+            const E = parseFloat(inputData.E);
+            const walls = new Set(inputData.walls || []);
+            const baseW = A > 0 ? A : 300;
+            let baseH;
+            if (walls.has('B') && walls.has('E')) {
+                baseH = Math.max(B, E);
+            } else if (walls.has('B')) {
+                baseH = B;
+            } else if (walls.has('E')) {
+                baseH = E;
+            } else {
+                baseH = Math.max(B, E);
+            }
+            baseH = baseH > 0 ? baseH : 300;
+
+            function calculateTextWidth(text, fontSize = 12) {
+                return text.length * fontSize * 0.6;
+            }
+
+            const labelAWidth = calculateTextWidth(`A (${A} cm)`);
+            const labelBWidth = calculateTextWidth(`B (${B} cm)`);
+            const labelEWidth = calculateTextWidth(`E (${E} cm)`);
+            const marginLeft = Math.max(15, labelEWidth + 5);
+            const marginRight = Math.max(15, labelBWidth + 5);
+            const marginTop = 25;
+            const marginBottom = 35;
+            const minCanvasW = baseW + marginLeft + marginRight;
+            const minCanvasH = baseH + marginTop + marginBottom;
+            const minSize = 600;
+            const scaleFactor = Math.max(minSize / minCanvasW, minSize / minCanvasH, 1.0);
+            const canvasW = minCanvasW * scaleFactor;
+            const canvasH = minCanvasH * scaleFactor;
+            const availableW = canvasW - marginLeft - marginRight;
+            const availableH = canvasH - marginTop - marginBottom;
+            const s = Math.min(availableW / baseW, availableH / baseH);
+            const w = baseW * s;
+            const h = baseH * s;
+            const x0 = marginLeft + (availableW - w) / 2;
+            const y0 = marginTop + (availableH - h) / 2;
+
+            const parts = [];
+            parts.push(
+                `<svg viewBox="0 0 ${canvasW} ${canvasH}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet"\n` +
+                `     xmlns="http://www.w3.org/2000/svg" text-rendering="optimizeLegibility">`
+            );
+            parts.push('<style> text { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill:#111; } .walllbl { font-size:12px; } </style>');
+            // Room rectangle
+            parts.push(`<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="none" stroke="#111" stroke-width="4" />`);
+            // Wall labels
+            parts.push(`<text class="walllbl" x="${x0 + w/2}" y="${y0 - 10}" text-anchor="middle">A (${A} cm)</text>`);
+            parts.push(`<text class="walllbl" x="${x0 + w + 10}" y="${y0 + h/2}" text-anchor="start">B (${B} cm)</text>`);
+            parts.push(`<text class="walllbl" x="${x0 - 10}" y="${y0 + h/2}" text-anchor="end">E (${E} cm)</text>`);
+            parts.push('</svg>');
+            return parts.join('');
+        }
+
+        function updateLivePreview() {
+            try {
+                const inputData = buildInputDataFromForm();
+                const svgContent = renderSvgRoom(inputData);
+                const resultContainer = document.getElementById('resultContainer');
+                if (resultContainer) {
+                    resultContainer.innerHTML = svgContent;
+                }
+            } catch (e) {
+                // Ignorar errores de parseo mientras se escribe
+                console.warn('Preview not available yet', e);
             }
         }
 
