@@ -682,28 +682,34 @@ def evaluate_combination(combination: Dict[str, int], A: float, B: float, C: flo
                     b_shelves = [s for s in plan if s['wall'] == 'B']
                     a_shelves = [s for s in plan if s['wall'] == 'A']
                     
+                    total_a_length = sum(s['length'] for s in a_shelves)
                     total_b_length = sum(s['length'] for s in b_shelves)
                     
-                    # Calcular el espacio disponible en B (B menos la profundidad de A)
-                    if a_shelves:
-                        depth_a = a_shelves[0]["depth"]
-                        available_b_space = B - depth_a
-                        # Cobertura del espacio disponible en B (no del muro completo)
-                        b_coverage = total_b_length / available_b_space if available_b_space > 0 else 0
-                    else:
-                        b_coverage = total_b_length / B
+                    # Calcular cobertura de cada muro
+                    a_coverage = total_a_length / A if A > 0 else 0
+                    b_coverage = total_b_length / B if B > 0 else 0
                     
+                    # Calcular cobertura total (promedio de ambos muros)
+                    total_coverage = (a_coverage + b_coverage) / 2
+                    
+                    # Calcular área total cubierta
+                    total_area = calculate_total_area(plan)
+                    
+                    strategy["a_coverage"] = a_coverage
                     strategy["b_coverage"] = b_coverage
+                    strategy["total_coverage"] = total_coverage
+                    strategy["total_area"] = total_area
+                    strategy["total_a_length"] = total_a_length
                     strategy["total_b_length"] = total_b_length
                 
                 # Ordenar estrategias priorizando:
-                # 1. Cobertura exacta (100%) del espacio disponible en B (objetivo principal)
-                # 2. Mayor cobertura del espacio disponible en B (pero <= 100%)
-                # 3. Menor número de repisas (cuando la cobertura es similar)
+                # 1. Mayor área total cubierta (objetivo principal - maximizar espacio útil)
+                # 2. Mayor cobertura total (promedio de cobertura de ambos muros)
+                # 3. Menor número de repisas (cuando el área es similar)
                 # 4. Menor merma (criterio final)
                 strategies.sort(key=lambda s: (
-                    abs(s["b_coverage"] - 1.0),  # Priorizar cobertura exacta (100%)
-                    -min(s["b_coverage"], 1.0),  # Luego mayor cobertura (pero <= 100%)
+                    -s["total_area"],            # Priorizar mayor área total
+                    -s["total_coverage"],        # Luego mayor cobertura total
                     len(s["plan"]),              # Luego menor número de repisas
                     calculate_waste(s["plan"])   # Finalmente menor merma
                 ))

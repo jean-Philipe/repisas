@@ -50,7 +50,7 @@
                 </div>
 
                 <p>
-                    <button type="submit" id="calculateBtn">Calcular Cotización</button>
+                    <button type="submit" id="calculateBtn">Generar Visualización Previa</button>
                 </p>
             </form>
         </div>
@@ -67,26 +67,61 @@
         </div>
     </div>
 
+    <div style="margin-top: 30px; border: 1px solid #ccc; padding: 20px; background: #f9f9f9;">
+        <h3>Recibir Cotización por WhatsApp</h3>
+        <form id="whatsappForm">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px;">
+                    <p>
+                        <label>Nombre y Apellido: <input type="text" id="nombre" name="nombre" required style="width: 100%;"></label>
+                    </p>
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                    <p>
+                        <label>Comuna: <input type="text" id="comuna" name="comuna" required style="width: 100%;"></label>
+                    </p>
+                </div>
+            </div>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px;">
+                    <p>
+                        <label>Celular: <input type="tel" id="celular" name="celular" placeholder="+56912345678" pattern="\+569[0-9]{8}" required style="width: 100%;"></label>
+                    </p>
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                    <p>
+                        <label>Correo Electrónico: <input type="email" id="correo" name="correo" required style="width: 100%;"></label>
+                    </p>
+                </div>
+            </div>
+            <p style="text-align: center; margin-top: 20px;">
+                <button type="submit" id="whatsappSubmitBtn">Quiero recibir la cotización por WhatsApp</button>
+            </p>
+        </form>
+    </div>
+
     <script>
         // ===== CONSTANTES Y CONFIGURACIÓN =====
         const DEPTHS = [68, 48, 38, 28];
         const MAX_LEN = 243;
         const MIN_LEN = 40;
         const DOOR_CLEAR = 80;
+        const MIN_CORRIDOR_WIDTH = 58;  // Minimum corridor width in cm
+        const WASTE_TOLERANCE = 25;  // Maximum waste difference to consider maximizing area in L-shape forms
 
         const HEIGHT_OPTIONS = [
-            {"h": 300, "levels": [6, 4]},
-            {"h": 250, "levels": [5, 4]},
+            {"h": 300, "levels": [6]},
+            {"h": 250, "levels": [5]},
             {"h": 200, "levels": [4]},
+            {"h": 180, "levels": [4]},
+            {"h": 160, "levels": [4]},
         ];
 
         // Opciones de muros por forma
         const wallOptions = {
             'L': [
                 { value: 'A,B', label: 'Muros A y B', description: 'Esquina superior derecha' },
-                { value: 'A,E', label: 'Muros A y E', description: 'Esquina superior izquierda' },
-                { value: 'B,C', label: 'Muros B y C', description: 'Esquina inferior derecha' },
-                { value: 'C,E', label: 'Muros C y E', description: 'Esquina inferior izquierda' }
+                { value: 'A,E', label: 'Muros A y E', description: 'Esquina superior izquierda' }
             ],
             'U': [
                 { value: 'A,B,E', label: 'Muros A, B y E', description: 'Forma U completa' }
@@ -94,8 +129,6 @@
             '1': [
                 { value: 'A', label: 'Solo Muro A', description: 'Pared superior' },
                 { value: 'B', label: 'Solo Muro B', description: 'Pared derecha' },
-                { value: 'C', label: 'Solo Muro C', description: 'Pared inferior' },
-                { value: 'D', label: 'Solo Muro D', description: 'Pared central' },
                 { value: 'E', label: 'Solo Muro E', description: 'Pared izquierda' }
             ]
         };
@@ -115,7 +148,7 @@
         }
 
         function pickHeightAndLevels(roomHeight) {
-            const usable = roomHeight - 40;
+            const usable = roomHeight - 30;
             const sortedOpts = HEIGHT_OPTIONS.sort((a, b) => b.h - a.h);
             for (let opt of sortedOpts) {
                 if (opt.h <= usable) {
@@ -127,31 +160,61 @@
 
         function packLengths(target) {
             if (target <= 0) return [];
-            if (target <= MAX_LEN) return [round1(target)];
-            
+            if (target <= MAX_LEN) {
+                // Si la longitud total es menor al mínimo, no crear repisa
+                if (target < MIN_LEN) {
+                    return [];
+                }
+                return [round1(target)];
+            }
             const nFull = Math.floor(target / MAX_LEN);
             const rem = target - nFull * MAX_LEN;
             
             if (rem === 0) {
                 return new Array(nFull).fill(MAX_LEN);
             }
-            if (rem < MIN_LEN) {
+            // Solo incluir el remanente si es mayor o igual al mínimo
+            if (rem >= MIN_LEN) {
+                return [...new Array(nFull).fill(MAX_LEN), round1(rem)];
+            } else {
+                // Si el remanente es menor al mínimo, no incluirlo
                 return new Array(nFull).fill(MAX_LEN);
             }
-            return [...new Array(nFull).fill(MAX_LEN), round1(rem)];
         }
 
         function maxDepthPerWall(C, D) {
-            const b = pickMaxLe(DEPTHS, C !== null ? C : Infinity);
-            const e = pickMaxLe(DEPTHS, D !== null ? D : Infinity);
+            // When C=0 or D=0, there are no space restrictions, use maximum depth
+            const b = pickMaxLe(DEPTHS, C > 0 ? C : Infinity);
+            const e = pickMaxLe(DEPTHS, D > 0 ? D : Infinity);
             const a = pickMaxLe(DEPTHS, Infinity);
             return { A: a, B: b, E: e };
         }
 
-        function usableLengthE(E, D, useE) {
+        function usableLengthE(E, D, useE, C = 0.0) {
             if (!useE) return E;
-            if (D === 0) return Math.max(0.0, E - DOOR_CLEAR);
+            // When D=0, there are no space restrictions, use full length
+            if (D === 0) {
+                // But check if there's a door restriction from C (door on E wall)
+                if (C > 0) {
+                    return Math.max(0.0, E - DOOR_CLEAR);
+                }
+                return E;
+            }
             return E;
+        }
+
+        function usableLengthB(B, C, useB, D = 0.0) {
+            if (!useB) return B;
+            // When C=0, there are no space restrictions, use full length
+            if (C === 0) {
+                // Check if there's a door restriction from D (door on B wall)
+                // D > 0 means there's a door on the B wall that reduces usable length
+                if (D > 0) {
+                    return Math.max(0.0, B - DOOR_CLEAR);
+                }
+                return B;
+            }
+            return B;
         }
 
         function buildShelvesForWall(wall, usableLen, depth, height, levels) {
@@ -163,6 +226,568 @@
                 height: height,
                 levels: levels
             }));
+        }
+
+        function validateShelfLength(length) {
+            return length >= MIN_LEN;
+        }
+
+        function validateCorridorWidth(A, lenA, depthB, depthE, useB, useE) {
+            // Calcular el ancho disponible del pasillo
+            // El pasillo disponible es siempre A menos las profundidades de las repisas laterales
+            let availableWidth = A;
+            
+            // Restar las profundidades de las repisas laterales
+            if (useB && depthB) {
+                availableWidth -= depthB;
+            }
+            if (useE && depthE) {
+                availableWidth -= depthE;
+            }
+            
+            return availableWidth >= MIN_CORRIDOR_WIDTH;
+        }
+
+        function calculateWaste(plan) {
+            let totalWaste = 0.0;
+            for (let shelf of plan) {
+                const length = shelf.length;
+                let baseLength;
+                if (length > 121) {
+                    baseLength = 243;
+                } else {
+                    baseLength = 121;
+                }
+                const waste = baseLength - length;
+                totalWaste += waste;
+            }
+            return totalWaste;
+        }
+
+        function calculateTotalArea(plan) {
+            let totalArea = 0.0;
+            for (let shelf of plan) {
+                const length = shelf.length;
+                const depth = shelf.depth;
+                const area = length * depth;
+                totalArea += area;
+            }
+            return totalArea;
+        }
+
+        function evaluatePlanQuality(plan) {
+            const pieces = plan.length;
+            const waste = calculateWaste(plan);
+            const cuts = plan.filter(p => p.length < MAX_LEN).length;
+            const totalLen = plan.reduce((sum, p) => sum + p.length, 0);
+            return [pieces, waste, cuts, totalLen];
+        }
+
+        function generateDepthCombinations(C, D) {
+            const combinations = [];
+            
+            // Obtener profundidades válidas para cada muro
+            const validDepthsB = C > 0 ? DEPTHS.filter(d => d <= C) : DEPTHS;
+            const validDepthsE = D > 0 ? DEPTHS.filter(d => d <= D) : DEPTHS;
+            const validDepthsA = DEPTHS;  // A no tiene restricciones de espacio
+            
+            // Generar todas las combinaciones
+            for (let depthA of validDepthsA) {
+                for (let depthB of validDepthsB) {
+                    for (let depthE of validDepthsE) {
+                        combinations.push({
+                            A: depthA,
+                            B: depthB,
+                            E: depthE
+                        });
+                    }
+                }
+            }
+            
+            return combinations;
+        }
+
+        function evaluateLShapeStrategies(depthA, depthB, A, B, C, hl, D = 0.0) {
+            const strategies = [];
+            
+            // Estrategia 1: A completa, B reducido por la profundidad de A
+            let lenA1 = A;
+            let usableB1 = usableLengthB(B, C, true, D);
+            let lenB1 = Math.max(0.0, usableB1 - depthA);
+            
+            if (validateShelfLength(lenA1) && validateShelfLength(lenB1) &&
+                validateCorridorWidth(A, lenA1, depthB, null, true, false)) {
+                
+                const plan1 = [];
+                plan1.push(...buildShelvesForWall("A", lenA1, depthA, hl.height, hl.levels));
+                plan1.push(...buildShelvesForWall("B", lenB1, depthB, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "A_complete_B_reduced",
+                    plan: plan1,
+                    lenA: lenA1,
+                    lenB: lenB1,
+                    depthA: depthA,
+                    depthB: depthB
+                });
+            }
+            
+            // Estrategia 2: B completo, A reducido por la profundidad de B
+            let lenA2 = Math.max(0.0, A - depthB);
+            let lenB2 = usableLengthB(B, C, true, D);
+            
+            if (validateShelfLength(lenA2) && validateShelfLength(lenB2) &&
+                validateCorridorWidth(A, lenA2, depthB, null, true, false)) {
+                
+                const plan2 = [];
+                plan2.push(...buildShelvesForWall("A", lenA2, depthA, hl.height, hl.levels));
+                plan2.push(...buildShelvesForWall("B", lenB2, depthB, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "B_complete_A_reduced",
+                    plan: plan2,
+                    lenA: lenA2,
+                    lenB: lenB2,
+                    depthA: depthA,
+                    depthB: depthB
+                });
+            }
+            
+            // Estrategia 3: A limitado para evitar división, B reducido por profundidad de A
+            let lenA3 = Math.min(A, MAX_LEN);
+            let usableB3 = usableLengthB(B, C, true, D);
+            let lenB3 = Math.max(0.0, usableB3 - depthA);
+            
+            if (validateShelfLength(lenA3) && validateShelfLength(lenB3) &&
+                validateCorridorWidth(A, lenA3, depthB, null, true, false)) {
+                
+                const plan3 = [];
+                plan3.push(...buildShelvesForWall("A", lenA3, depthA, hl.height, hl.levels));
+                plan3.push(...buildShelvesForWall("B", lenB3, depthB, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "A_limited_B_reduced",
+                    plan: plan3,
+                    lenA: lenA3,
+                    lenB: lenB3,
+                    depthA: depthA,
+                    depthB: depthB
+                });
+            }
+            
+            // Estrategia 4: B limitado para evitar división, A reducido por profundidad de B
+            let lenA4 = Math.max(0.0, A - depthB);
+            let usableB4 = usableLengthB(B, C, true, D);
+            let lenB4 = Math.min(usableB4, MAX_LEN);
+            
+            if (validateShelfLength(lenA4) && validateShelfLength(lenB4) &&
+                validateCorridorWidth(A, lenA4, depthB, null, true, false)) {
+                
+                const plan4 = [];
+                plan4.push(...buildShelvesForWall("A", lenA4, depthA, hl.height, hl.levels));
+                plan4.push(...buildShelvesForWall("B", lenB4, depthB, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "B_limited_A_reduced",
+                    plan: plan4,
+                    lenA: lenA4,
+                    lenB: lenB4,
+                    depthA: depthA,
+                    depthB: depthB
+                });
+            }
+            
+            // Estrategia 5: A completa, B reducido, pero con profundidades ajustadas
+            for (let testDepthA of [68, 48, 38, 28]) {
+                let lenA5 = A;
+                let usableB5 = usableLengthB(B, C, true, D);
+                let lenB5 = Math.max(0.0, usableB5 - testDepthA);
+                
+                if (validateShelfLength(lenA5) && validateShelfLength(lenB5) &&
+                    validateCorridorWidth(A, lenA5, depthB, null, true, false)) {
+                    
+                    const plan5 = [];
+                    plan5.push(...buildShelvesForWall("A", lenA5, testDepthA, hl.height, hl.levels));
+                    plan5.push(...buildShelvesForWall("B", lenB5, depthB, hl.height, hl.levels));
+                    
+                    strategies.push({
+                        strategy: `A_complete_B_reduced_depthA${testDepthA}`,
+                        plan: plan5,
+                        lenA: lenA5,
+                        lenB: lenB5,
+                        depthA: testDepthA,
+                        depthB: depthB
+                    });
+                }
+            }
+            
+            // Estrategia 6: B completo, A reducido, pero con profundidades ajustadas
+            for (let testDepthB of [68, 48, 38, 28]) {
+                if (testDepthB <= C) {  // Verificar restricción de espacio
+                    let lenA6 = Math.max(0.0, A - testDepthB);
+                    let lenB6 = usableLengthB(B, C, true, D);
+                    
+                    if (validateShelfLength(lenA6) && validateShelfLength(lenB6) &&
+                        validateCorridorWidth(A, lenA6, testDepthB, null, true, false)) {
+                        
+                        const plan6 = [];
+                        plan6.push(...buildShelvesForWall("A", lenA6, depthA, hl.height, hl.levels));
+                        plan6.push(...buildShelvesForWall("B", lenB6, testDepthB, hl.height, hl.levels));
+                        
+                        strategies.push({
+                            strategy: `B_complete_A_reduced_depthB${testDepthB}`,
+                            plan: plan6,
+                            lenA: lenA6,
+                            lenB: lenB6,
+                            depthA: depthA,
+                            depthB: testDepthB
+                        });
+                    }
+                }
+            }
+            
+            return strategies;
+        }
+
+        function evaluateUShapeStrategies(depthA, depthB, depthE, A, B, C, D, E, hl) {
+            const strategies = [];
+            
+            // Estrategia 1: B y E completos, A reducida por sus profundidades
+            let lenA1 = Math.max(0.0, A - depthB - depthE);
+            let lenB1 = usableLengthB(B, C, true, D);
+            let lenE1 = usableLengthE(E, D, true, C);
+            
+            if (validateShelfLength(lenA1) && validateShelfLength(lenB1) && validateShelfLength(lenE1) &&
+                validateCorridorWidth(A, lenA1, depthB, depthE, true, true)) {
+                
+                const plan1 = [];
+                plan1.push(...buildShelvesForWall("A", lenA1, depthA, hl.height, hl.levels));
+                plan1.push(...buildShelvesForWall("B", lenB1, depthB, hl.height, hl.levels));
+                plan1.push(...buildShelvesForWall("E", lenE1, depthE, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "BE_complete_A_reduced",
+                    plan: plan1,
+                    lenA: lenA1,
+                    lenB: lenB1,
+                    lenE: lenE1,
+                    depthA: depthA,
+                    depthB: depthB,
+                    depthE: depthE
+                });
+            }
+            
+            // Estrategia 2: A completa, B y E reducidos por la profundidad de A
+            let lenA2 = A;
+            let lenB2 = Math.max(0.0, usableLengthB(B, C, true, D) - depthA);
+            let lenE2 = Math.max(0.0, usableLengthE(E, D, true, C) - depthA);
+            
+            if (validateShelfLength(lenA2) && validateShelfLength(lenB2) && validateShelfLength(lenE2) &&
+                validateCorridorWidth(A, lenA2, depthB, depthE, true, true)) {
+                
+                const plan2 = [];
+                plan2.push(...buildShelvesForWall("A", lenA2, depthA, hl.height, hl.levels));
+                plan2.push(...buildShelvesForWall("B", lenB2, depthB, hl.height, hl.levels));
+                plan2.push(...buildShelvesForWall("E", lenE2, depthE, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "A_complete_BE_reduced",
+                    plan: plan2,
+                    lenA: lenA2,
+                    lenB: lenB2,
+                    lenE: lenE2,
+                    depthA: depthA,
+                    depthB: depthB,
+                    depthE: depthE
+                });
+            }
+            
+            // Estrategia 3: A reducida para evitar división, B y E completos
+            let lenA3 = Math.min(Math.max(0.0, A - depthB - depthE), MAX_LEN);
+            let lenB3 = usableLengthB(B, C, true, D);
+            let lenE3 = usableLengthE(E, D, true, C);
+            
+            if (validateShelfLength(lenA3) && validateShelfLength(lenB3) && validateShelfLength(lenE3) &&
+                validateCorridorWidth(A, lenA3, depthB, depthE, true, true)) {
+                
+                const plan3 = [];
+                plan3.push(...buildShelvesForWall("A", lenA3, depthA, hl.height, hl.levels));
+                plan3.push(...buildShelvesForWall("B", lenB3, depthB, hl.height, hl.levels));
+                plan3.push(...buildShelvesForWall("E", lenE3, depthE, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "A_reduced_no_division",
+                    plan: plan3,
+                    lenA: lenA3,
+                    lenB: lenB3,
+                    lenE: lenE3,
+                    depthA: depthA,
+                    depthB: depthB,
+                    depthE: depthE
+                });
+            }
+            
+            // Estrategia 4: A completa limitada, B y E reducidos por profundidad de A
+            let lenA4 = Math.min(A, MAX_LEN);
+            let lenB4 = Math.max(0.0, usableLengthB(B, C, true, D) - depthA);
+            let lenE4 = Math.max(0.0, usableLengthE(E, D, true, C) - depthA);
+            
+            if (validateShelfLength(lenA4) && validateShelfLength(lenB4) && validateShelfLength(lenE4) &&
+                validateCorridorWidth(A, lenA4, depthB, depthE, true, true)) {
+                
+                const plan4 = [];
+                plan4.push(...buildShelvesForWall("A", lenA4, depthA, hl.height, hl.levels));
+                plan4.push(...buildShelvesForWall("B", lenB4, depthB, hl.height, hl.levels));
+                plan4.push(...buildShelvesForWall("E", lenE4, depthE, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "A_limited_BE_reduced",
+                    plan: plan4,
+                    lenA: lenA4,
+                    lenB: lenB4,
+                    lenE: lenE4,
+                    depthA: depthA,
+                    depthB: depthB,
+                    depthE: depthE
+                });
+            }
+            
+            // Estrategia 5: B y E simétricos completos, A reducida por sus profundidades
+            let lenB5 = usableLengthB(B, C, true, D);
+            let lenE5 = usableLengthE(E, D, true, C);
+            let lenA5 = Math.max(0.0, A - depthB - depthE);
+            
+            if (validateShelfLength(lenA5) && validateShelfLength(lenB5) && validateShelfLength(lenE5) &&
+                validateCorridorWidth(A, lenA5, depthB, depthE, true, true)) {
+                
+                const plan5 = [];
+                plan5.push(...buildShelvesForWall("A", lenA5, depthA, hl.height, hl.levels));
+                plan5.push(...buildShelvesForWall("B", lenB5, depthB, hl.height, hl.levels));
+                plan5.push(...buildShelvesForWall("E", lenE5, depthE, hl.height, hl.levels));
+                
+                strategies.push({
+                    strategy: "BE_symmetric_A_reduced",
+                    plan: plan5,
+                    lenA: lenA5,
+                    lenB: lenB5,
+                    lenE: lenE5,
+                    depthA: depthA,
+                    depthB: depthB,
+                    depthE: depthE
+                });
+            }
+            
+            return strategies;
+        }
+
+        function evaluateCombination(combination, A, B, C, D, E, walls, shape, hl) {
+            const depthA = combination.A;
+            const depthB = combination.B;
+            const depthE = combination.E;
+            
+            const useA = walls.includes("A");
+            const useB = walls.includes("B");
+            const useE = walls.includes("E");
+            
+            // Calcular longitudes según la forma
+            if (shape === "L") {
+                if (useA && useB && !useE) {
+                    // Forma L con A y B - evaluar múltiples estrategias
+                    const strategies = evaluateLShapeStrategies(depthA, depthB, A, B, C, hl, D);
+                    
+                    if (strategies.length > 0) {
+                        // Calcular métricas adicionales para cada estrategia
+                        for (let strategy of strategies) {
+                            const plan = strategy.plan;
+                            const bShelves = plan.filter(s => s.wall === 'B');
+                            const aShelves = plan.filter(s => s.wall === 'A');
+                            
+                            const totalALength = aShelves.reduce((sum, s) => sum + s.length, 0);
+                            const totalBLength = bShelves.reduce((sum, s) => sum + s.length, 0);
+                            
+                            // Cobertura por muro
+                            const aCoverage = A > 0 ? totalALength / A : 0;
+                            const bCoverage = B > 0 ? totalBLength / B : 0;
+                            
+                            // Cobertura total promedio
+                            const totalCoverage = (aCoverage + bCoverage) / 2;
+                            
+                            // Área total cubierta
+                            const totalArea = calculateTotalArea(plan);
+                            
+                            strategy.a_coverage = aCoverage;
+                            strategy.b_coverage = bCoverage;
+                            strategy.total_coverage = totalCoverage;
+                            strategy.total_area = totalArea;
+                            strategy.total_a_length = totalALength;
+                            strategy.total_b_length = totalBLength;
+                        }
+                        
+                        // Ordenar estrategias priorizando:
+                        // 1. Mayor área total cubierta
+                        // 2. Mayor cobertura total promedio
+                        // 3. Menor número de repisas
+                        // 4. Menor merma
+                        strategies.sort((s1, s2) => {
+                            if (s1.total_area !== s2.total_area) return s2.total_area - s1.total_area;
+                            if (s1.total_coverage !== s2.total_coverage) return s2.total_coverage - s1.total_coverage;
+                            if (s1.plan.length !== s2.plan.length) return s1.plan.length - s2.plan.length;
+                            return calculateWaste(s1.plan) - calculateWaste(s2.plan);
+                        });
+                        
+                        // Seleccionar la primera estrategia (ya está ordenada correctamente)
+                        const bestStrategy = strategies[0];
+                        
+                        return {
+                            valid: true,
+                            plan: bestStrategy.plan,
+                            lenA: bestStrategy.lenA,
+                            lenB: bestStrategy.lenB,
+                            lenE: 0.0,
+                            depthA: bestStrategy.depthA,
+                            depthB: bestStrategy.depthB,
+                            depthE: null,
+                            complete_form: true,
+                            strategy: bestStrategy.strategy
+                        };
+                    } else {
+                        return { valid: false, reason: `No se pueden crear repisas en forma L con muros A y B. Verifique que: 1) Las longitudes de A (${A} cm) y B (${B} cm) sean suficientes, 2) El espacio disponible C (${C} cm) permita la profundidad mínima (28 cm), 3) El pasillo tenga al menos ${MIN_CORRIDOR_WIDTH} cm de ancho.` };
+                    }
+                } else if (useA && useE && !useB) {
+                    // Forma L con A y E
+                    const lenA = A;
+                    const Eu = usableLengthE(E, D, true, C);
+                    const lenE = Math.max(0.0, Eu - depthA);
+                    
+                    if (validateShelfLength(lenA) && validateShelfLength(lenE) && 
+                        validateCorridorWidth(A, lenA, null, depthE, false, useE)) {
+                        
+                        const plan = [];
+                        plan.push(...buildShelvesForWall("A", lenA, depthA, hl.height, hl.levels));
+                        plan.push(...buildShelvesForWall("E", lenE, depthE, hl.height, hl.levels));
+                        
+                        return {
+                            valid: true,
+                            plan: plan,
+                            lenA: lenA,
+                            lenB: 0.0,
+                            lenE: lenE,
+                            depthA: depthA,
+                            depthB: null,
+                            depthE: depthE,
+                            complete_form: true
+                        };
+                    } else {
+                        return { valid: false, reason: `No se pueden crear repisas en forma L con muros A y E. Verifique que: 1) Las longitudes de A (${A} cm) y E (${E} cm) sean suficientes, 2) El espacio disponible D (${D} cm) permita la profundidad mínima (28 cm), 3) El pasillo tenga al menos ${MIN_CORRIDOR_WIDTH} cm de ancho.` };
+                    }
+                }
+            } else if (shape === "U") {
+                if (useA && useB && useE) {
+                    // Forma U con A, B y E - evaluar múltiples estrategias
+                    const strategies = evaluateUShapeStrategies(depthA, depthB, depthE, A, B, C, D, E, hl);
+                    
+                    if (strategies.length > 0) {
+                        // Ordenar estrategias por número de repisas (menor es mejor), 
+                        // y como segundo criterio por ancho total (mayor es mejor)
+                        strategies.sort((a, b) => {
+                            if (a.plan.length !== b.plan.length) {
+                                return a.plan.length - b.plan.length;
+                            }
+                            const totalDepthA = a.plan.reduce((sum, p) => sum + p.depth, 0);
+                            const totalDepthB = b.plan.reduce((sum, p) => sum + p.depth, 0);
+                            return totalDepthB - totalDepthA;
+                        });
+                        
+                        const bestStrategy = strategies[0];
+                        
+                        return {
+                            valid: true,
+                            plan: bestStrategy.plan,
+                            lenA: bestStrategy.lenA,
+                            lenB: bestStrategy.lenB,
+                            lenE: bestStrategy.lenE,
+                            depthA: bestStrategy.depthA,
+                            depthB: bestStrategy.depthB,
+                            depthE: bestStrategy.depthE,
+                            complete_form: true,
+                            strategy: bestStrategy.strategy
+                        };
+                    } else {
+                        return { valid: false, reason: `No se pueden crear repisas en forma U con muros A, B y E. Verifique que: 1) Las longitudes de A (${A} cm), B (${B} cm) y E (${E} cm) sean suficientes, 2) Los espacios disponibles C (${C} cm) y D (${D} cm) permitan las profundidades mínimas (28 cm), 3) El pasillo tenga al menos ${MIN_CORRIDOR_WIDTH} cm de ancho.` };
+                    }
+                }
+            }
+            
+            return { valid: false, reason: `Configuración no soportada: forma '${shape}' con muros ${walls}. Las formas soportadas son 'L' (con muros A-B o A-E) y 'U' (con muros A-B-E).` };
+        }
+
+        function findBestCombination(A, B, C, D, E, walls, shape, hl) {
+            const combinations = generateDepthCombinations(C, D);
+            const validCombinations = [];
+            
+            // Evaluar todas las combinaciones
+            for (let combination of combinations) {
+                const result = evaluateCombination(combination, A, B, C, D, E, walls, shape, hl);
+                if (result.valid) {
+                    // Calcular métricas de calidad
+                    const plan = result.plan;
+                    const [pieces, waste, cuts, totalLen] = evaluatePlanQuality(plan);
+                    
+                    // Calcular el ancho total de las repisas (mayor es mejor para el cliente)
+                    const totalDepth = plan.reduce((sum, p) => sum + p.depth, 0);
+                    
+                    validCombinations.push({
+                        combination: combination,
+                        result: result,
+                        quality: [pieces, waste, cuts, totalLen],
+                        totalDepth: totalDepth,
+                        score: [pieces, -totalDepth, waste, cuts, totalLen]  // Priorizar piezas, luego ancho
+                    });
+                }
+            }
+            
+            if (validCombinations.length === 0) {
+                return { ok: false, error: `No es posible crear repisas en forma ${shape} con los muros ${walls}. Las posibles causas son: 1) Longitudes insuficientes (A=${A} cm, B=${B} cm, E=${E} cm), 2) Espacios restringidos (C=${C} cm, D=${D} cm), 3) Pasillo insuficiente (mínimo ${MIN_CORRIDOR_WIDTH} cm), 4) Altura de habitación insuficiente para las repisas.` };
+            }
+            
+            // Ordenar por score (menor es mejor)
+            validCombinations.sort((a, b) => {
+                for (let i = 0; i < a.score.length; i++) {
+                    if (a.score[i] !== b.score[i]) {
+                        return a.score[i] - b.score[i];
+                    }
+                }
+                return 0;
+            });
+            
+            const best = validCombinations[0];
+            
+            // Construir respuesta
+            const plan = best.result.plan;
+            const totals = {
+                totalLen: round1(plan.reduce((sum, p) => sum + p.length, 0)),
+                pieces: plan.length,
+                cuts: plan.filter(p => p.length < MAX_LEN).length,
+            };
+            
+            const meta = {
+                depthMax: {
+                    A: best.result.depthA,
+                    B: best.result.depthB,
+                    E: best.result.depthE
+                },
+                hl: hl,
+                lenA: round1(best.result.lenA),
+                lenB: round1(best.result.lenB),
+                lenE: round1(best.result.lenE),
+            };
+            
+            return {
+                ok: true,
+                plan: plan,
+                totals: totals,
+                meta: meta
+            };
         }
 
         function planShelvesPy(params) {
@@ -177,103 +802,13 @@
 
             const hl = pickHeightAndLevels(roomHeight);
             if (!hl) {
-                return { ok: false, error: "Ninguna altura cumple la holgura de 40 cm al cielo." };
+                const minHeight = Math.min(...HEIGHT_OPTIONS.map(opt => opt.h)) + 30;
+                const availableHeights = HEIGHT_OPTIONS.map(opt => `${opt.h} cm`).join(', ');
+                return { ok: false, error: `La altura de la habitación (${roomHeight} cm) es insuficiente para las repisas. Se requiere al menos ${minHeight} cm (altura mínima de repisa + 30 cm de holgura al cielo). Las alturas disponibles son: ${availableHeights}.` };
             }
 
-            const depthMax = maxDepthPerWall(C, D);
-            const useA = walls.includes("A");
-            const useB = walls.includes("B");
-            const useE = walls.includes("E");
-            
-            console.log('Walls selected:', walls);
-            console.log('useA:', useA, 'useB:', useB, 'useE:', useE);
-            console.log('depthMax:', depthMax);
-
-            function chooseDepthCommon(ws) {
-                const cands = ws.map(w => depthMax[w]).filter(d => d !== null);
-                if (cands.length === 0) return null;
-                return Math.min(...cands);
-            }
-
-            let depthA = depthMax.A;
-            let depthB = depthMax.B;
-            let depthE = depthMax.E;
-
-            if (shape === "U" && useA && useB && useE) {
-                const common = chooseDepthCommon(["B", "A", "E"]);
-                if (common) {
-                    depthA = depthB = depthE = common;
-                }
-            }
-
-            let lenA = A, lenB = B, lenE = E;
-            
-            if (shape === "L") {
-                const useOnlyB = useA && useB && !useE;
-                const useOnlyE = useA && useE && !useB;
-                
-                if (useOnlyB && B > MAX_LEN && A <= MAX_LEN && depthA) {
-                    lenA = A;
-                    lenB = Math.max(0.0, B - depthA);
-                } else if (useOnlyE && usableLengthE(E, D, true) > MAX_LEN && A <= MAX_LEN && depthA) {
-                    lenA = A;
-                    lenE = Math.max(0.0, usableLengthE(E, D, true) - depthA);
-                } else {
-                    if (useA && useB) {
-                        lenA = Math.max(0.0, A - (depthB || 0));
-                    }
-                    if (useA && useE) {
-                        lenA = Math.max(0.0, A - (depthE || 0));
-                    }
-                    if (useE) {
-                        lenE = usableLengthE(E, D, true);
-                    }
-                }
-            }
-            
-            if (shape === "U" && useA && useB && useE) {
-                lenA = Math.max(0.0, A - (depthB || 0) - (depthE || 0));
-            }
-            if (shape !== "L" && useE) {
-                lenE = usableLengthE(E, D, true);
-            }
-
-            const plan = [];
-            
-            if (useB) {
-                if (!depthB) {
-                    return { ok: false, error: "No cabe ninguna profundidad en B por C." };
-                }
-                plan.push(...buildShelvesForWall("B", lenB, depthB, hl.height, hl.levels));
-            }
-            if (useA) {
-                if (!depthA) {
-                    return { ok: false, error: "No hay profundidad válida para A." };
-                }
-                plan.push(...buildShelvesForWall("A", lenA, depthA, hl.height, hl.levels));
-            }
-            if (useE) {
-                if (!depthE) {
-                    return { ok: false, error: "No cabe ninguna profundidad en E por D." };
-                }
-                plan.push(...buildShelvesForWall("E", lenE, depthE, hl.height, hl.levels));
-            }
-
-            const totals = {
-                totalLen: round1(plan.reduce((sum, p) => sum + p.length, 0)),
-                pieces: plan.length,
-                cuts: plan.filter(p => p.length < MAX_LEN).length,
-            };
-            
-            const meta = {
-                depthMax: depthMax,
-                hl: hl,
-                lenA: round1(lenA),
-                lenB: round1(lenB),
-                lenE: round1(lenE),
-            };
-            
-            return { ok: true, plan: plan, totals: totals, meta: meta };
+            // Usar el nuevo sistema de evaluación de combinaciones
+            return findBestCombination(A, B, C, D, E, walls, shape, hl);
         }
 
         // ===== FUNCIONES DE RENDERIZADO SVG =====
@@ -281,38 +816,62 @@
             const A = parseFloat(inputData.A);
             const B = parseFloat(inputData.B);
             const E = parseFloat(inputData.E);
+            const walls = new Set(inputData.walls || []);
             const baseW = A;
-            const baseH = Math.max(B, E);
             
+            // Altura base debe reflejar únicamente los muros activos:
+            // - Si solo E está activo (o A+E), usar E
+            // - Si solo B está activo (o A+B), usar B
+            // - Si B y E están activos, usar max(B, E)
+            let baseH;
+            if (walls.has("B") && walls.has("E")) {
+                baseH = Math.max(B, E);
+            } else if (walls.has("B")) {
+                baseH = B;
+            } else if (walls.has("E")) {
+                baseH = E;
+            } else {
+                baseH = Math.max(B, E);
+            }
+            
+            // Calcular el espacio necesario para las etiquetas
             function calculateTextWidth(text, fontSize = 12) {
+                // Aproximación del ancho del texto (1px por carácter es conservador)
                 return text.length * fontSize * 0.6;
             }
             
+            // Espacios necesarios para etiquetas de muros
             const labelAWidth = calculateTextWidth(`A (${A} cm)`);
             const labelBWidth = calculateTextWidth(`B (${B} cm)`);
             const labelEWidth = calculateTextWidth(`E (${E} cm)`);
             
+            // Margen mínimo para etiquetas (izquierda, derecha, arriba, abajo)
             const marginLeft = Math.max(15, labelEWidth + 5);
             const marginRight = Math.max(15, labelBWidth + 5);
-            const marginTop = 25;
-            const marginBottom = 35;
+            const marginTop = 25;  // espacio para etiqueta A
+            const marginBottom = 35;  // espacio para leyenda
             
+            // Calcular dimensiones del canvas necesario
             const minCanvasW = baseW + marginLeft + marginRight;
             const minCanvasH = baseH + marginTop + marginBottom;
             
+            // Establecer un tamaño mínimo y escalar si es necesario
             const minSize = 600;
             const scaleFactor = Math.max(minSize / minCanvasW, minSize / minCanvasH, 1.0);
             
             const canvasW = minCanvasW * scaleFactor;
             const canvasH = minCanvasH * scaleFactor;
             
+            // Recalcular escala para el contenido
             const availableW = canvasW - marginLeft - marginRight;
             const availableH = canvasH - marginTop - marginBottom;
             const s = Math.min(availableW / baseW, availableH / baseH);
             
+            // Dimensiones del cuarto escalado
             const w = baseW * s;
             const h = baseH * s;
             
+            // Posición centrada con márgenes
             const x0 = marginLeft + (availableW - w) / 2;
             const y0 = marginTop + (availableH - h) / 2;
 
@@ -373,41 +932,175 @@
             // Shelves group
             parts.push('<g fill="#e43" fill-opacity="0.15" stroke="#e43" stroke-width="3">');
 
+            // Track positions for each wall to place shelves sequentially
             const wallPositions = { A: 0, B: 0, E: 0 };
+            // Detect if A fills the entire top length; if so, vertical shelves must start below A depth
+            const lenAMeta = parseFloat(result.meta?.lenA || A);
+            const aFillsFullLength = approximatelyEqual(lenAMeta, A);
             
+            // Check for special L-shape case: exactly 2 shelves, A > 243cm but < A wall length
+            function isSpecialLCase() {
+                // Must be L-shape (A and B walls only, no E)
+                if (!(walls.size === 2 && walls.has("A") && walls.has("B"))) {
+                    return false;
+                }
+                
+                // Must have exactly 2 shelves
+                if (result.plan.length !== 2) {
+                    return false;
+                }
+                
+                // Check if one shelf is for A and one for B
+                const wallsInPlan = new Set(result.plan.map(shelf => shelf.wall));
+                if (!wallsInPlan.has("A") || !wallsInPlan.has("B")) {
+                    return false;
+                }
+                
+                // Find the A shelf
+                const aShelf = result.plan.find(shelf => shelf.wall === "A");
+                if (!aShelf) {
+                    return false;
+                }
+                
+                // Check A shelf length conditions: >= 243cm but < A wall length
+                const aLength = aShelf.length;
+                return aLength >= 243 && aLength < A;
+            }
+            
+            const specialLCase = isSpecialLCase();
+
+            // Draw each individual shelf from the plan
             for (let shelf of result.plan) {
                 const wall = shelf.wall;
                 const length = shelf.length * s;
                 const depth = shelf.depth * s;
                 
-                if (wall === 'B') {
+                if (wall === 'B') {  // Right wall
                     const hasA = hasWall('A');
                     const hasE = hasWall('E');
                     const dA = depthOf('A') * s;
                     const fillsFull = approximatelyEqual(perWall('B'), B);
-                    const yStart = fillsFull ? y0 : (hasA && !hasE ? (y0 + dA) : y0);
-                    const currentY = yStart + wallPositions.B;
-                    parts.push(`<rect x="${x0 + w - depth}" y="${currentY}" width="${depth}" height="${length}" />`);
-                    wallPositions.B += length;
-                } else if (wall === 'A') {
-                    const useE = hasWall('E');
-                    const dE = depthOf('E') * s;
-                    let xStart = x0;
-                    if (useE) {
-                        const eFillsFull = approximatelyEqual(perWall('E'), E);
-                        if (eFillsFull) {
-                            xStart = x0 + dE;
+                    
+                    // Calculate proper scaling for B wall based on its actual height
+                    // The B wall should be scaled based on its own height, not the base_h
+                    const bScale = baseH > 0 ? s * (B / baseH) : s;
+                    const lengthScaled = shelf.length * bScale;
+                    
+                    // Determine positioning based on which shelf occupies more of its wall
+                    let yStart;
+                    if (hasA && !hasE) {
+                        // L-shape with A and B: determine which shelf occupies more of its wall
+                        const lenAMeta = parseFloat(result.meta?.lenA || A);
+                        const lenBMeta = parseFloat(result.meta?.lenB || B);
+                        const aPercentage = lenAMeta / A;
+                        const bPercentage = lenBMeta / B;
+                        const bFillsMost = bPercentage > aPercentage;
+                        
+                        if (bFillsMost) {
+                            // B occupies most of its wall, start from top
+                            yStart = y0;
+                        } else {
+                            // A occupies most of its wall, start B below A to avoid overlap
+                            yStart = y0 + dA;
+                        }
+                    } else {
+                        // Default logic for other cases
+                        if (hasA && aFillsFullLength) {
+                            yStart = y0 + dA;
+                        } else {
+                            yStart = fillsFull ? y0 : ((hasA && !hasE) ? (y0 + dA) : y0);
                         }
                     }
-                    const currentX = xStart + wallPositions.A;
-                    parts.push(`<rect x="${currentX}" y="${y0}" width="${length}" height="${depth}" />`);
+                    
+                    // Position this shelf after previous ones on wall B
+                    const currentY = yStart + wallPositions.B;
+                    parts.push(`<rect x="${x0 + w - depth}" y="${currentY}" width="${depth}" height="${lengthScaled}" />`);
+                    wallPositions.B += lengthScaled;
+                    
+                } else if (wall === 'A') {  // Top wall
+                    const useE = hasWall('E');
+                    const useB = hasWall('B');
+                    const dE = depthOf('E') * s;
+                    const dB = depthOf('B') * s;
+                    
+                    let xStart;
+                    // Special case: L-shape with 2 shelves, A > 243cm but < A wall length
+                    if (specialLCase) {
+                        // Position A shelf at the right edge (next to B wall)
+                        xStart = x0 + w - length;
+                    } else {
+                        // Determine positioning based on which shelf occupies most of its wall
+                        if (useE && useB) {
+                            // U-shape: check if A fills the entire wall width
+                            const lenAMeta = parseFloat(result.meta?.lenA || A);
+                            const aFillsFullWidth = approximatelyEqual(lenAMeta, A);
+                            
+                            if (aFillsFullWidth) {
+                                // A fills the entire wall, start from left edge
+                                xStart = x0;
+                            } else {
+                                // A doesn't fill the entire wall, center between E and B depths
+                                const availableWidth = w - dE - dB;
+                                xStart = x0 + dE + (availableWidth - length) / 2;
+                            }
+                        } else if (useE) {
+                            // L-shape with A and E: determine which shelf occupies more of its wall
+                            const lenAMeta = parseFloat(result.meta?.lenA || A);
+                            const lenEMeta = parseFloat(result.meta?.lenE || E);
+                            const aPercentage = lenAMeta / A;
+                            const ePercentage = lenEMeta / E;
+                            const aFillsMost = aPercentage > ePercentage;
+                            
+                            if (aFillsMost) {
+                                // A occupies most of its wall, start from left edge
+                                xStart = x0;
+                            } else {
+                                // E occupies most of its wall, start after E depth
+                                xStart = x0 + dE;
+                            }
+                        } else if (useB) {
+                            // L-shape with A and B: determine which shelf occupies more of its wall
+                            const lenAMeta = parseFloat(result.meta?.lenA || A);
+                            const lenBMeta = parseFloat(result.meta?.lenB || B);
+                            const aPercentage = lenAMeta / A;
+                            const bPercentage = lenBMeta / B;
+                            const aFillsMost = aPercentage > bPercentage;
+                            
+                            if (aFillsMost) {
+                                // A occupies most of its wall, start from left edge
+                                xStart = x0;
+                            } else {
+                                // B occupies most of its wall, start A from left edge to avoid overlap
+                                xStart = x0;
+                            }
+                        } else {
+                            // Only A wall: start from left edge
+                            xStart = x0;
+                        }
+                        
+                        // Position this shelf after previous ones on wall A
+                        xStart += wallPositions.A;
+                    }
+                    
+                    parts.push(`<rect x="${xStart}" y="${y0}" width="${length}" height="${depth}" />`);
                     wallPositions.A += length;
-                } else if (wall === 'E') {
+                    
+                } else if (wall === 'E') {  // Left wall
                     const hasA = hasWall('A');
                     const hasB = hasWall('B');
                     const dA = depthOf('A') * s;
-                    const fillsFull = approximatelyEqual(perWall('E'), E);
-                    const yStart = fillsFull ? y0 : (hasA && !hasB ? (y0 + dA) : y0);
+                    const lenEMeta = parseFloat(result.meta?.lenE || E);
+                    const fillsFull = approximatelyEqual(lenEMeta, E);
+                    
+                    // If top shelf A spans full length, always start E below A to avoid overlap
+                    let yStart;
+                    if (hasA && aFillsFullLength) {
+                        yStart = y0 + dA;
+                    } else {
+                        yStart = fillsFull ? y0 : ((hasA && !hasB) ? (y0 + dA) : y0);
+                    }
+                    
+                    // Position this shelf after previous ones on wall E
                     const currentY = yStart + wallPositions.E;
                     parts.push(`<rect x="${x0}" y="${currentY}" width="${depth}" height="${length}" />`);
                     wallPositions.E += length;
@@ -416,42 +1109,143 @@
 
             parts.push('</g>');
 
-            // Shelf labels
+            // shelf labels (outside the group so they're black)
+            // Draw labels for each individual shelf
             const wallPositionsLabels = { A: 0, B: 0, E: 0 };
             
-            for (let shelf of result.plan) {
+            for (let i = 0; i < result.plan.length; i++) {
+                const shelf = result.plan[i];
                 const wall = shelf.wall;
                 const length = shelf.length;
                 const depth = shelf.depth;
                 
-                if (wall === 'B') {
+                if (wall === 'B') {  // Right wall
                     const hasA = hasWall('A');
                     const hasE = hasWall('E');
                     const dA = depthOf('A') * s;
                     const fillsFull = approximatelyEqual(perWall('B'), B);
-                    const yStart = fillsFull ? y0 : (hasA && !hasE ? (y0 + dA) : y0);
-                    const currentY = yStart + wallPositionsLabels.B + (length * s / 2);
-                    parts.push(`<text class="legend" x="${x0 + w - (depth * s)/2}" y="${currentY}" text-anchor="middle">${length} × ${depth}</text>`);
-                    wallPositionsLabels.B += length * s;
-                } else if (wall === 'A') {
-                    const useE = hasWall('E');
-                    const dE = depthOf('E') * s;
-                    let xStart = x0;
-                    if (useE) {
-                        const eFillsFull = approximatelyEqual(perWall('E'), E);
-                        if (eFillsFull) {
-                            xStart = x0 + dE;
+                    
+                    // Calculate proper scaling for B wall based on its actual height
+                    // The B wall should be scaled based on its own height, not the base_h
+                    const bScale = baseH > 0 ? s * (B / baseH) : s;
+                    const lengthScaled = shelf.length * bScale;
+                    
+                    // Determine positioning based on which shelf occupies more of its wall
+                    let yStart;
+                    if (hasA && !hasE) {
+                        // L-shape with A and B: determine which shelf occupies more of its wall
+                        const lenAMeta = parseFloat(result.meta?.lenA || A);
+                        const lenBMeta = parseFloat(result.meta?.lenB || B);
+                        const aPercentage = lenAMeta / A;
+                        const bPercentage = lenBMeta / B;
+                        const bFillsMost = bPercentage > aPercentage;
+                        
+                        if (bFillsMost) {
+                            // B occupies most of its wall, start from top
+                            yStart = y0;
+                        } else {
+                            // A occupies most of its wall, start B below A to avoid overlap
+                            yStart = y0 + dA;
+                        }
+                    } else {
+                        // Default logic for other cases
+                        if (hasA && aFillsFullLength) {
+                            yStart = y0 + dA;
+                        } else {
+                            yStart = fillsFull ? y0 : ((hasA && !hasE) ? (y0 + dA) : y0);
                         }
                     }
-                    const currentX = xStart + wallPositionsLabels.A + (length * s / 2);
+                    
+                    // Position label for this specific shelf
+                    const currentY = yStart + wallPositionsLabels.B + (lengthScaled / 2);
+                    parts.push(`<text class="legend" x="${x0 + w - (depth * s)/2}" y="${currentY}" text-anchor="middle">${length} × ${depth}</text>`);
+                    wallPositionsLabels.B += lengthScaled;
+                    
+                } else if (wall === 'A') {  // Top wall
+                    const useE = hasWall('E');
+                    const useB = hasWall('B');
+                    const dE = depthOf('E') * s;
+                    const dB = depthOf('B') * s;
+                    let xStart = x0;
+                    
+                    // Special case: L-shape with 2 shelves, A > 243cm but < A wall length
+                    if (specialLCase) {
+                        // Position A shelf at the right edge (next to B wall)
+                        xStart = x0 + w - (length * s);
+                    } else {
+                        // Determine positioning based on which shelf occupies most of its wall
+                        if (useE && useB) {
+                            // U-shape: check if A fills the entire wall width
+                            const lenAMeta = parseFloat(result.meta?.lenA || A);
+                            const aFillsFullWidth = approximatelyEqual(lenAMeta, A);
+                            
+                            if (aFillsFullWidth) {
+                                // A fills the entire wall, start from left edge
+                                xStart = x0;
+                            } else {
+                                // A doesn't fill the entire wall, center between E and B depths
+                                const availableWidth = w - dE - dB;
+                                xStart = x0 + dE + (availableWidth - (length * s)) / 2;
+                            }
+                        } else if (useE) {
+                            // L-shape with A and E: determine which shelf occupies more of its wall
+                            const lenAMeta = parseFloat(result.meta?.lenA || A);
+                            const lenEMeta = parseFloat(result.meta?.lenE || E);
+                            const aPercentage = lenAMeta / A;
+                            const ePercentage = lenEMeta / E;
+                            const aFillsMost = aPercentage > ePercentage;
+                            
+                            if (aFillsMost) {
+                                // A occupies most of its wall, start from left edge
+                                xStart = x0;
+                            } else {
+                                // E occupies most of its wall, start after E depth
+                                xStart = x0 + dE;
+                            }
+                        } else if (useB) {
+                            // L-shape with A and B: determine which shelf occupies more of its wall
+                            const lenAMeta = parseFloat(result.meta?.lenA || A);
+                            const lenBMeta = parseFloat(result.meta?.lenB || B);
+                            const aPercentage = lenAMeta / A;
+                            const bPercentage = lenBMeta / B;
+                            const aFillsMost = aPercentage > bPercentage;
+                            
+                            if (aFillsMost) {
+                                // A occupies most of its wall, start from left edge
+                                xStart = x0;
+                            } else {
+                                // B occupies most of its wall, start A from left edge to avoid overlap
+                                xStart = x0;
+                            }
+                        } else {
+                            // Only A wall: start from left edge
+                            xStart = x0;
+                        }
+                        
+                        // Position this shelf after previous ones on wall A
+                        xStart += wallPositionsLabels.A;
+                    }
+                    
+                    // Position label for this specific shelf
+                    const currentX = xStart + (length * s / 2);
                     parts.push(`<text class="legend" x="${currentX}" y="${y0 + (depth * s) + 14}" text-anchor="middle">${length} × ${depth}</text>`);
                     wallPositionsLabels.A += length * s;
-                } else if (wall === 'E') {
+                    
+                } else if (wall === 'E') {  // Left wall
                     const hasA = hasWall('A');
                     const hasB = hasWall('B');
                     const dA = depthOf('A') * s;
-                    const fillsFull = approximatelyEqual(perWall('E'), E);
-                    const yStart = fillsFull ? y0 : (hasA && !hasB ? (y0 + dA) : y0);
+                    const lenEMeta = parseFloat(result.meta?.lenE || E);
+                    const fillsFull = approximatelyEqual(lenEMeta, E);
+                    
+                    let yStart;
+                    if (hasA && aFillsFullLength) {
+                        yStart = y0 + dA;
+                    } else {
+                        yStart = fillsFull ? y0 : ((hasA && !hasB) ? (y0 + dA) : y0);
+                    }
+                    
+                    // Position label for this specific shelf
                     const currentY = yStart + wallPositionsLabels.E + (length * s / 2);
                     parts.push(`<text class="legend" x="${x0 + (depth * s)/2}" y="${currentY}" text-anchor="middle">${length} × ${depth}</text>`);
                     wallPositionsLabels.E += length * s;
@@ -490,6 +1284,7 @@
             });
 
             document.getElementById('shelfForm').addEventListener('submit', handleFormSubmit);
+            document.getElementById('whatsappForm').addEventListener('submit', handleWhatsAppRequest);
         }
 
         function selectShape(shape) {
@@ -507,18 +1302,16 @@
                 const wallOption = document.createElement('p');
                 wallOption.innerHTML = `
                     <label>
-                        <input type="checkbox" value="${option.value}" id="wall_${option.value}">
+                        <input type="radio" name="wallSelection" value="${option.value}" id="wall_${option.value}">
                         ${option.label} - ${option.description}
                     </label>
                 `;
                 wallOptionsContainer.appendChild(wallOption);
             });
 
-            // Si la forma es U, marcar por defecto la única opción A,B,E
-            if (shape === 'U') {
-                const cb = wallOptionsContainer.querySelector('input[type="checkbox"]');
-                if (cb) cb.checked = true;
-            }
+            // Marcar por defecto la primera opción para todas las formas
+            const firstRadio = wallOptionsContainer.querySelector('input[type="radio"]');
+            if (firstRadio) firstRadio.checked = true;
         }
 
         function handleFormSubmit(e) {
@@ -550,17 +1343,15 @@
         }
 
         function getSelectedWalls() {
-            const selectedCheckboxes = document.querySelectorAll('#wallOptions input[type="checkbox"]:checked');
-            const wallValues = Array.from(selectedCheckboxes).map(cb => cb.value);
+            const selectedRadio = document.querySelector('#wallOptions input[type="radio"]:checked');
             
-            // Convertir valores como "A,B,E" en arrays de muros individuales
-            const allWalls = [];
-            wallValues.forEach(wallGroup => {
-                const walls = wallGroup.split(',');
-                allWalls.push(...walls);
-            });
+            if (!selectedRadio) {
+                return [];
+            }
             
-            return allWalls;
+            // Convertir valor como "A,B,E" en array de muros individuales
+            const walls = selectedRadio.value.split(',');
+            return walls;
         }
 
         function calculateAndRender(inputData) {
@@ -597,30 +1388,96 @@
             
             resultContainer.innerHTML = `
                 <div style="background: #efe; color: #363; padding: 10px; margin: 10px 0; border: 1px solid #cfc;">
-                    ✅ Plan generado exitosamente
+                    ✅ Visualización generada exitosamente
                 </div>
                 
                 <div style="width: 100%; text-align: center; margin: 20px 0;">
                     ${svgContent}
                 </div>
-                
-                <div style="background: #f8f9fa; padding: 15px; margin: 10px 0;">
-                    <h4>Detalles del Plan</h4>
-                    <p><strong>Piezas:</strong> ${result.totals.pieces}</p>
-                    <p><strong>Cortes:</strong> ${result.totals.cuts}</p>
-                    <p><strong>Longitud Total:</strong> ${result.totals.totalLen} cm</p>
-                    <p><strong>Niveles:</strong> ${result.meta.hl.levels}</p>
-                    
-                    <h4>Lista de Repisas</h4>
-                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
-                        ${result.plan.map((shelf, index) => `
-                            <div style="padding: 5px; border-bottom: 1px solid #eee;">
-                                <strong>Repisa ${index + 1}</strong> - Muro ${shelf.wall}: ${shelf.length} × ${shelf.depth} cm
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
             `;
+        }
+
+        function handleWhatsAppRequest(e) {
+            e.preventDefault();
+            
+            // Validar que se haya generado una visualización previa
+            const resultContainer = document.getElementById('resultContainer');
+            const hasVisualization = resultContainer.innerHTML.includes('Visualización generada exitosamente');
+            
+            if (!hasVisualization) {
+                alert('Por favor, primero genera una visualización previa antes de solicitar la cotización.');
+                return;
+            }
+            
+            // Obtener datos del formulario de WhatsApp
+            const whatsappFormData = new FormData(e.target);
+            const nombre = whatsappFormData.get('nombre');
+            const comuna = whatsappFormData.get('comuna');
+            const celular = whatsappFormData.get('celular');
+            const correo = whatsappFormData.get('correo');
+            
+            // Obtener datos del formulario principal
+            const shelfFormData = new FormData(document.getElementById('shelfForm'));
+            const selectedWalls = getSelectedWalls();
+            const shape = document.querySelector('input[name="shape"]:checked').value;
+            
+            // Validar formato del celular
+            const celularPattern = /^\+569[0-9]{8}$/;
+            if (!celularPattern.test(celular)) {
+                alert('Por favor ingresa un número de celular válido en formato +569xxxxxxxx');
+                return;
+            }
+            
+            // Crear payload para el webhook
+            const payload = {
+                A: parseFloat(shelfFormData.get('A')),
+                B: parseFloat(shelfFormData.get('B')),
+                C: parseFloat(shelfFormData.get('C')),
+                D: parseFloat(shelfFormData.get('D')),
+                E: parseFloat(shelfFormData.get('E')),
+                roomHeight: parseFloat(shelfFormData.get('roomHeight')),
+                walls: selectedWalls,
+                shape: shape,
+                nombre: nombre,
+                comuna: comuna,
+                celular: celular,
+                correo: correo
+            };
+            
+            // Mostrar estado de carga
+            const submitBtn = document.getElementById('whatsappSubmitBtn');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Enviando solicitud...';
+            
+            // Realizar la request POST al webhook
+            fetch("https://n8n.srv1030908.hstgr.cloud/webhook/cotizaciones/nueva", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Error del servidor: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Éxito
+                alert('¡Solicitud realizada con éxito! Te contactaremos pronto por WhatsApp.');
+                // Limpiar el formulario
+                document.getElementById('whatsappForm').reset();
+            })
+            .catch(error => {
+                // Error
+                console.error('Error al enviar solicitud:', error);
+                alert(`Error al enviar la solicitud: ${error.message}. Por favor intenta nuevamente.`);
+            })
+            .finally(() => {
+                // Restaurar el botón
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            });
         }
 
         function showLoading(show) {
@@ -630,11 +1487,11 @@
             if (show) {
                 loading.style.display = 'block';
                 calculateBtn.disabled = true;
-                calculateBtn.textContent = 'Calculando...';
+                calculateBtn.textContent = 'Generando...';
             } else {
                 loading.style.display = 'none';
                 calculateBtn.disabled = false;
-                calculateBtn.textContent = 'Calcular Cotización';
+                calculateBtn.textContent = 'Generar Visualización Previa';
             }
         }
 
