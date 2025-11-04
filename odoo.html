@@ -1,7 +1,4 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Cotización de Repisas</title>
     <style>
@@ -24,8 +21,8 @@
             #resultContainer { margin-top: 12px; }
         }
     </style>
-</head>
-<body>
+
+
     <h1>Sistema de Cotización de Repisas</h1>
     <div id="intro">
         <p>
@@ -41,22 +38,22 @@
             <form id="shelfForm">
                 <h3>Dimensiones de los Muros</h3>
                 <p>
-                    <label class="form-field">Muro A (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallA" name="A" value="300" required></label>
+                    <label class="form-field">Muro A (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallA" name="A" value="300" required=""></label>
                 </p>
                 <p>
-                    <label class="form-field">Muro B (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallB" name="B" value="350" required></label>
+                    <label class="form-field">Muro B (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallB" name="B" value="350" required=""></label>
                 </p>
                 <p>
-                    <label class="form-field">Muro C (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallC" name="C" value="150" required></label>
+                    <label class="form-field">Muro C (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallC" name="C" value="150" required=""></label>
                 </p>
                 <p>
-                    <label class="form-field">Muro D (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallD" name="D" value="80" required></label>
+                    <label class="form-field">Muro D (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallD" name="D" value="80" required=""></label>
                 </p>
                 <p>
-                    <label class="form-field">Muro E (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallE" name="E" value="350" required></label>
+                    <label class="form-field">Muro E (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallE" name="E" value="350" required=""></label>
                 </p>
                 <p>
-                    <label class="form-field">Altura de la bodega (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="roomHeight" name="roomHeight" value="250" required></label>
+                    <label class="form-field">Altura de la bodega (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="roomHeight" name="roomHeight" value="250" required=""></label>
                 </p>
 
                 <h3>Forma de la bodega</h3>
@@ -73,7 +70,7 @@
                 <div id="wallsSection" style="display: none;">
                     <h4>Selecciona los muros a utilizar</h4>
                     <div id="wallOptions">
-                        <!-- Se llenará dinámicamente -->
+                        
                     </div>
                 </div>
 
@@ -101,29 +98,29 @@
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 250px;">
                     <p>
-                        <label>Nombre y Apellido: <input type="text" id="nombre" name="nombre" required style="width: 100%;"></label>
+                        <label>Nombre y Apellido: <input type="text" id="nombre" name="nombre" required="" style="width: 100%;"></label>
                     </p>
                 </div>
                 <div style="flex: 1; min-width: 250px;">
                     <p>
-                        <label>Comuna: <input type="text" id="comuna" name="comuna" required style="width: 100%;"></label>
+                        <label>Comuna: <input type="text" id="comuna" name="comuna" required="" style="width: 100%;"></label>
                     </p>
                 </div>
             </div>
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 250px;">
                     <p>
-                        <label>Celular: <input type="tel" id="celular" name="celular" placeholder="+56912345678" pattern="\+569[0-9]{8}" required style="width: 100%;"></label>
+                        <label>Celular: <input type="tel" id="celular" name="celular" placeholder="+56912345678" pattern="\+569[0-9]{8}" required="" style="width: 100%;"></label>
                     </p>
                 </div>
                 <div style="flex: 1; min-width: 250px;">
                     <p>
-                        <label>Correo Electrónico: <input type="email" id="correo" name="correo" required style="width: 100%;"></label>
+                        <label>Correo Electrónico: <input type="email" id="correo" name="correo" required="" style="width: 100%;"></label>
                     </p>
                 </div>
             </div>
             <p style="text-align: center; margin-top: 20px;">
-                <button type="submit" id="whatsappSubmitBtn">Quiero recibir la cotización por WhatsApp</button>
+                <button type="submit" id="whatsappSubmitBtn">Solicitar cotización para esta repisa</button>
             </p>
         </form>
     </div>
@@ -1045,7 +1042,7 @@
             parts.push(`<text class="walllbl" x="${x0 - 10}" y="${y0 + h/2}" text-anchor="end">E (${E} cm)</text>`);
 
             // Shelves group
-            parts.push('<g fill="#e43" fill-opacity="0.15" stroke="#e43" stroke-width="3">');
+            parts.push('<g fill="#ff931e" fill-opacity="0.15" stroke="#ff931e" stroke-width="3">');
 
             // Track positions for each wall to place shelves sequentially
             const wallPositions = { A: 0, B: 0, E: 0 };
@@ -1752,5 +1749,3 @@
             `;
         }
     </script>
-</body>
-</html>

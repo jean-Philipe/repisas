@@ -108,7 +108,7 @@ def render_svg(input_data: Dict, result: Dict) -> str:
     parts.append(f'<text class="walllbl" x="{x0 - 10}" y="{y0 + h/2}" text-anchor="end">E ({E} cm)</text>')
 
     # shelves group
-    parts.append('<g fill="#e43" fill-opacity="0.15" stroke="#e43" stroke-width="3">')
+    parts.append('<g fill="#ff931e" fill-opacity="0.15" stroke="#ff931e" stroke-width="3">')
 
     # Track positions for each wall to place shelves sequentially
     wall_positions = {'A': 0, 'B': 0, 'E': 0}
