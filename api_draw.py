@@ -2,7 +2,9 @@ from typing import Dict
 
 
 def render_svg(input_data: Dict, result: Dict) -> str:
-    A = float(input_data["A"]) ; B = float(input_data["B"]) ; E = float(input_data["E"]) 
+    A = float(input_data["A"]) ; B = float(input_data["B"]) ; E = float(input_data["E"])
+    C = float(input_data.get("C", 0))
+    D = float(input_data.get("D", 0))
     walls = set(input_data.get("walls", []))
     base_w = A
     # Altura base debe reflejar únicamente los muros activos:
@@ -32,7 +34,7 @@ def render_svg(input_data: Dict, result: Dict) -> str:
     margin_left = max(15, label_e_width + 5)
     margin_right = max(15, label_b_width + 5)
     margin_top = 25  # espacio para etiqueta A
-    margin_bottom = 35  # espacio para leyenda
+    margin_bottom = 60  # espacio para leyenda y etiquetas de muros C y D
     
     # Calcular dimensiones del canvas necesario
     min_canvas_w = base_w + margin_left + margin_right
@@ -99,13 +101,39 @@ def render_svg(input_data: Dict, result: Dict) -> str:
         y += s*50
     parts.append('</g>')
 
-    # room rectangle
-    parts.append(f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" fill="none" stroke="#111" stroke-width="4" />')
+    # Room walls - draw each wall as a separate line
+    stroke_width = 4
+    stroke_color = "#111"
+    
+    # Muro A (top wall) - horizontal line from left to right
+    parts.append(f'<line x1="{x0}" y1="{y0}" x2="{x0 + w}" y2="{y0}" stroke="{stroke_color}" stroke-width="{stroke_width}" />')
+    
+    # Muro E (left wall) - vertical line from top to bottom
+    parts.append(f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + h}" stroke="{stroke_color}" stroke-width="{stroke_width}" />')
+    
+    # Muro B (right wall) - vertical line from top to bottom
+    parts.append(f'<line x1="{x0 + w}" y1="{y0}" x2="{x0 + w}" y2="{y0 + h}" stroke="{stroke_color}" stroke-width="{stroke_width}" />')
+    
+    # Muro D (bottom left) - horizontal line from E wall, length = D
+    if D > 0:
+        d_length = D * s
+        parts.append(f'<line x1="{x0}" y1="{y0 + h}" x2="{x0 + d_length}" y2="{y0 + h}" stroke="{stroke_color}" stroke-width="{stroke_width}" />')
+    
+    # Muro C (bottom right) - horizontal line from B wall towards left, length = C
+    if C > 0:
+        c_length = C * s
+        parts.append(f'<line x1="{x0 + w - c_length}" y1="{y0 + h}" x2="{x0 + w}" y2="{y0 + h}" stroke="{stroke_color}" stroke-width="{stroke_width}" />')
 
     # wall labels A,B,E with measurements
     parts.append(f'<text class="walllbl" x="{x0 + w/2}" y="{y0 - 10}" text-anchor="middle">A ({A} cm)</text>')
     parts.append(f'<text class="walllbl" x="{x0 + w + 10}" y="{y0 + h/2}" text-anchor="start">B ({B} cm)</text>')
     parts.append(f'<text class="walllbl" x="{x0 - 10}" y="{y0 + h/2}" text-anchor="end">E ({E} cm)</text>')
+    if C > 0:
+        c_length = C * s
+        parts.append(f'<text class="walllbl" x="{x0 + w - c_length/2}" y="{y0 + h + 20}" text-anchor="middle">C ({C} cm)</text>')
+    if D > 0:
+        d_length = D * s
+        parts.append(f'<text class="walllbl" x="{x0 + d_length/2}" y="{y0 + h + 20}" text-anchor="middle">D ({D} cm)</text>')
 
     # shelves group
     parts.append('<g fill="#ff931e" fill-opacity="0.15" stroke="#ff931e" stroke-width="3">')
@@ -394,6 +422,6 @@ def render_svg(input_data: Dict, result: Dict) -> str:
             wall_positions_labels['E'] += length * s
 
     # legend
-    parts.append(f'<text class="legend" x="{x0}" y="{y0 + h + 28}" text-anchor="start">Escala aproximada. Cuadrícula cada 50 cm.</text>')
+    parts.append(f'<text class="legend" x="{x0}" y="{y0 + h + 50}" text-anchor="start">Escala aproximada. Cuadrícula cada 50 cm.</text>')
     parts.append('</svg>')
     return "".join(parts)

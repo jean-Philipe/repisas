@@ -148,8 +148,8 @@
         const DEPTHS = [68, 48, 38, 28];
         const MAX_LEN = 243;
         const MIN_LEN = 40;
-        const DOOR_CLEAR = 80;
-        const MIN_CORRIDOR_WIDTH = 58;  // Minimum corridor width in cm
+        const DOOR_CLEAR = 70;
+        const MIN_CORRIDOR_WIDTH = 45;  // Minimum corridor width in cm
         const WASTE_TOLERANCE = 25;  // Maximum waste difference to consider maximizing area in L-shape forms
 
         const HEIGHT_OPTIONS = [
@@ -730,15 +730,93 @@
                     const strategies = evaluateUShapeStrategies(depthA, depthB, depthE, A, B, C, D, E, hl);
                     
                     if (strategies.length > 0) {
-                        // Ordenar estrategias por número de repisas (menor es mejor), 
-                        // y como segundo criterio por ancho total (mayor es mejor)
-                        strategies.sort((a, b) => {
-                            if (a.plan.length !== b.plan.length) {
-                                return a.plan.length - b.plan.length;
+                        // Calcular métricas para cada estrategia
+                        for (let strategy of strategies) {
+                            const plan = strategy.plan;
+                            
+                            // Calcular longitudes totales por muro
+                            const totalLenA = plan.filter(p => p.wall === "A").reduce((sum, p) => sum + p.length, 0);
+                            const totalLenB = plan.filter(p => p.wall === "B").reduce((sum, p) => sum + p.length, 0);
+                            const totalLenE = plan.filter(p => p.wall === "E").reduce((sum, p) => sum + p.length, 0);
+                            
+                            // Calcular cobertura de cada muro (qué porcentaje está cubierto)
+                            const coverageA = A > 0 ? totalLenA / A : 0;
+                            const coverageB = B > 0 ? totalLenB / B : 0;
+                            const coverageE = E > 0 ? totalLenE / E : 0;
+                            
+                            // Calcular cobertura promedio
+                            const avgCoverage = (coverageA + coverageB + coverageE) / 3;
+                            
+                            // Detectar superposición: en forma U, la superposición ocurre cuando:
+                            // - A se reduce por depthB y depthE (lenA < A - depthB - depthE) Y
+                            // - B y E usan toda o casi toda su longitud disponible
+                            // Esto causa que las repisas B y E se superpongan con A
+                            let hasOverlap = false;
+                            
+                            // Calcular cuánto se redujo A
+                            const expectedLenAWithoutReduction = A;
+                            const actualLenA = strategy.lenA;
+                            const aReduced = expectedLenAWithoutReduction - actualLenA;
+                            
+                            // Si A se redujo significativamente (más que un pequeño ajuste)
+                            if (aReduced > 1.0) {  // Más de 1 cm de reducción
+                                // Verificar si la reducción es aproximadamente igual a depthB + depthE
+                                const expectedReduction = depthB + depthE;
+                                if (Math.abs(aReduced - expectedReduction) < 5.0) {  // Dentro de 5 cm
+                                    // A se redujo por las profundidades de B y E
+                                    // Verificar si B y E están usando toda su longitud disponible
+                                    const usableB = usableLengthB(B, C, true, D);
+                                    const usableE = usableLengthE(E, D, true, C);
+                                    
+                                    // Si B y E usan más del 90% de su longitud disponible, hay superposición
+                                    const bUsage = usableB > 0 ? strategy.lenB / usableB : 0;
+                                    const eUsage = usableE > 0 ? strategy.lenE / usableE : 0;
+                                    
+                                    if (bUsage > 0.9 && eUsage > 0.9) {
+                                        // B y E están usando casi toda su longitud
+                                        // Esto causa superposición porque empiezan desde arriba
+                                        // en lugar de empezar desde donde termina la profundidad de A
+                                        hasOverlap = true;
+                                    }
+                                }
                             }
-                            const totalDepthA = a.plan.reduce((sum, p) => sum + p.depth, 0);
-                            const totalDepthB = b.plan.reduce((sum, p) => sum + p.depth, 0);
-                            return totalDepthB - totalDepthA;
+                            
+                            // Calcular si hay huecos en cada muro
+                            // Un muro tiene huecos si la suma de longitudes de repisas es menor que el muro
+                            const gapsA = Math.max(0, A - totalLenA);
+                            const gapsB = Math.max(0, B - totalLenB);
+                            const gapsE = Math.max(0, E - totalLenE);
+                            const totalGaps = gapsA + gapsB + gapsE;
+                            
+                            // Asignar métricas a la estrategia
+                            strategy.avgCoverage = avgCoverage;
+                            strategy.totalGaps = totalGaps;
+                            strategy.hasOverlap = hasOverlap;
+                            strategy.coverageA = coverageA;
+                            strategy.coverageB = coverageB;
+                            strategy.coverageE = coverageE;
+                        }
+                        
+                        // Ordenar estrategias priorizando:
+                        // 1. Sin superposición (hasOverlap = false primero)
+                        // 2. Menor número de huecos (totalGaps menor)
+                        // 3. Mayor cobertura promedio (avgCoverage mayor)
+                        // 4. Menor número de repisas
+                        strategies.sort((a, b) => {
+                            // Primero: sin superposición (false = 0, true = 1)
+                            if (a.hasOverlap !== b.hasOverlap) {
+                                return a.hasOverlap ? 1 : -1;
+                            }
+                            // Segundo: menor número de huecos
+                            if (a.totalGaps !== b.totalGaps) {
+                                return a.totalGaps - b.totalGaps;
+                            }
+                            // Tercero: mayor cobertura promedio (negativo para ordenar descendente)
+                            if (a.avgCoverage !== b.avgCoverage) {
+                                return b.avgCoverage - a.avgCoverage;
+                            }
+                            // Cuarto: menor número de repisas
+                            return a.plan.length - b.plan.length;
                         });
                         
                         const bestStrategy = strategies[0];

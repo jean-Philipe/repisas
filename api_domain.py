@@ -3,8 +3,8 @@ from typing import Dict, List, Optional, Tuple
 DEPTHS = [68, 48, 38, 28]
 MAX_LEN = 243
 MIN_LEN = 40
-DOOR_CLEAR = 80
-MIN_CORRIDOR_WIDTH = 58  # Minimum corridor width in cm
+DOOR_CLEAR = 70
+MIN_CORRIDOR_WIDTH = 45  # Minimum corridor width in cm
 WASTE_TOLERANCE = 25  # Maximum waste difference to consider maximizing area in L-shape forms
 
 HEIGHT_OPTIONS = [
@@ -773,9 +773,80 @@ def evaluate_combination(combination: Dict[str, int], A: float, B: float, C: flo
             strategies = evaluate_u_shape_strategies(depthA, depthB, depthE, A, B, C, D, E, hl)
             
             if strategies:
-                # Ordenar estrategias por número de repisas (menor es mejor), 
-                # y como segundo criterio por ancho total (mayor es mejor)
-                strategies.sort(key=lambda s: (len(s["plan"]), -sum(p["depth"] for p in s["plan"])))
+                # Calcular métricas para cada estrategia
+                for strategy in strategies:
+                    plan = strategy["plan"]
+                    
+                    # Calcular longitudes totales por muro
+                    total_len_a = sum(p["length"] for p in plan if p["wall"] == "A")
+                    total_len_b = sum(p["length"] for p in plan if p["wall"] == "B")
+                    total_len_e = sum(p["length"] for p in plan if p["wall"] == "E")
+                    
+                    # Calcular cobertura de cada muro (qué porcentaje está cubierto)
+                    coverage_a = total_len_a / A if A > 0 else 0
+                    coverage_b = total_len_b / B if B > 0 else 0
+                    coverage_e = total_len_e / E if E > 0 else 0
+                    
+                    # Calcular cobertura promedio
+                    avg_coverage = (coverage_a + coverage_b + coverage_e) / 3
+                    
+                    # Detectar superposición: en forma U, la superposición ocurre cuando:
+                    # - A se reduce por depthB y depthE (lenA < A - depthB - depthE) Y
+                    # - B y E usan toda o casi toda su longitud disponible
+                    # Esto causa que las repisas B y E se superpongan con A
+                    has_overlap = False
+                    
+                    # Calcular cuánto se redujo A
+                    expected_len_a_without_reduction = A
+                    actual_len_a = strategy["lenA"]
+                    a_reduced = expected_len_a_without_reduction - actual_len_a
+                    
+                    # Si A se redujo significativamente (más que un pequeño ajuste)
+                    if a_reduced > 1.0:  # Más de 1 cm de reducción
+                        # Verificar si la reducción es aproximadamente igual a depthB + depthE
+                        expected_reduction = depthB + depthE
+                        if abs(a_reduced - expected_reduction) < 5.0:  # Dentro de 5 cm
+                            # A se redujo por las profundidades de B y E
+                            # Verificar si B y E están usando toda su longitud disponible
+                            usable_b = usable_length_b(B, C, True, D)
+                            usable_e = usable_length_e(E, D, True, C)
+                            
+                            # Si B y E usan más del 90% de su longitud disponible, hay superposición
+                            b_usage = strategy["lenB"] / usable_b if usable_b > 0 else 0
+                            e_usage = strategy["lenE"] / usable_e if usable_e > 0 else 0
+                            
+                            if b_usage > 0.9 and e_usage > 0.9:
+                                # B y E están usando casi toda su longitud
+                                # Esto causa superposición porque empiezan desde arriba
+                                # en lugar de empezar desde donde termina la profundidad de A
+                                has_overlap = True
+                    
+                    # Calcular si hay huecos en cada muro
+                    # Un muro tiene huecos si la suma de longitudes de repisas es menor que el muro
+                    gaps_a = max(0, A - total_len_a)
+                    gaps_b = max(0, B - total_len_b)
+                    gaps_e = max(0, E - total_len_e)
+                    total_gaps = gaps_a + gaps_b + gaps_e
+                    
+                    # Asignar métricas a la estrategia
+                    strategy["avg_coverage"] = avg_coverage
+                    strategy["total_gaps"] = total_gaps
+                    strategy["has_overlap"] = has_overlap
+                    strategy["coverage_a"] = coverage_a
+                    strategy["coverage_b"] = coverage_b
+                    strategy["coverage_e"] = coverage_e
+                
+                # Ordenar estrategias priorizando:
+                # 1. Sin superposición (has_overlap = False primero)
+                # 2. Menor número de huecos (total_gaps menor)
+                # 3. Mayor cobertura promedio (avg_coverage mayor)
+                # 4. Menor número de repisas
+                strategies.sort(key=lambda s: (
+                    s["has_overlap"],  # False (0) antes que True (1)
+                    s["total_gaps"],  # Menor es mejor
+                    -s["avg_coverage"],  # Mayor es mejor (negativo para ordenar ascendente)
+                    len(s["plan"])  # Menor número de repisas
+                ))
                 best_strategy = strategies[0]
                 
                 return {
