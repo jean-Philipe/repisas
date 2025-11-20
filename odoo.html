@@ -41,16 +41,13 @@
                     <label class="form-field">Muro A (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallA" name="A" value="300" required=""></label>
                 </p>
                 <p>
-                    <label class="form-field">Muro B (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallB" name="B" value="350" required=""></label>
+                    <label class="form-field">Muro B y E (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallB" name="B" value="350" required=""></label>
                 </p>
                 <p>
                     <label class="form-field">Muro C (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallC" name="C" value="150" required=""></label>
                 </p>
                 <p>
                     <label class="form-field">Muro D (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallD" name="D" value="80" required=""></label>
-                </p>
-                <p>
-                    <label class="form-field">Muro E (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="wallE" name="E" value="350" required=""></label>
                 </p>
                 <p>
                     <label class="form-field">Altura de la bodega (cm): <input class="number-input" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" id="roomHeight" name="roomHeight" value="250" required=""></label>
@@ -927,6 +924,8 @@
         function renderSvg(inputData, result) {
             const A = parseFloat(inputData.A);
             const B = parseFloat(inputData.B);
+            const C = parseFloat(inputData.C || 0);
+            const D = parseFloat(inputData.D || 0);
             const E = parseFloat(inputData.E);
             const walls = new Set(inputData.walls || []);
             const baseW = A;
@@ -961,7 +960,7 @@
             const marginLeft = Math.max(15, labelEWidth + 5);
             const marginRight = Math.max(15, labelBWidth + 5);
             const marginTop = 25;  // espacio para etiqueta A
-            const marginBottom = 35;  // espacio para leyenda
+            const marginBottom = 60;  // espacio para leyenda y etiquetas de muros C y D
             
             // Calcular dimensiones del canvas necesario
             const minCanvasW = baseW + marginLeft + marginRight;
@@ -1033,13 +1032,43 @@
             }
             parts.push('</g>');
 
-            // Room rectangle
-            parts.push(`<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="none" stroke="#111" stroke-width="4" />`);
+            // Room walls - draw each wall as a separate line
+            const strokeWidth = 4;
+            const strokeColor = "#111";
+            
+            // Muro A (top wall) - horizontal line from left to right
+            parts.push(`<line x1="${x0}" y1="${y0}" x2="${x0 + w}" y2="${y0}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            
+            // Muro E (left wall) - vertical line from top to bottom
+            parts.push(`<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            
+            // Muro B (right wall) - vertical line from top to bottom
+            parts.push(`<line x1="${x0 + w}" y1="${y0}" x2="${x0 + w}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            
+            // Muro D (bottom left) - horizontal line from E wall, length = D
+            if (D > 0) {
+                const dLength = D * s;
+                parts.push(`<line x1="${x0}" y1="${y0 + h}" x2="${x0 + dLength}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            }
+            
+            // Muro C (bottom right) - horizontal line from B wall towards left, length = C
+            if (C > 0) {
+                const cLength = C * s;
+                parts.push(`<line x1="${x0 + w - cLength}" y1="${y0 + h}" x2="${x0 + w}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            }
 
             // Wall labels
             parts.push(`<text class="walllbl" x="${x0 + w/2}" y="${y0 - 10}" text-anchor="middle">A (${A} cm)</text>`);
             parts.push(`<text class="walllbl" x="${x0 + w + 10}" y="${y0 + h/2}" text-anchor="start">B (${B} cm)</text>`);
             parts.push(`<text class="walllbl" x="${x0 - 10}" y="${y0 + h/2}" text-anchor="end">E (${E} cm)</text>`);
+            if (C > 0) {
+                const cLength = C * s;
+                parts.push(`<text class="walllbl" x="${x0 + w - cLength/2}" y="${y0 + h + 20}" text-anchor="middle">C (${C} cm)</text>`);
+            }
+            if (D > 0) {
+                const dLength = D * s;
+                parts.push(`<text class="walllbl" x="${x0 + dLength/2}" y="${y0 + h + 20}" text-anchor="middle">D (${D} cm)</text>`);
+            }
 
             // Shelves group
             parts.push('<g fill="#ff931e" fill-opacity="0.15" stroke="#ff931e" stroke-width="3">');
@@ -1364,7 +1393,7 @@
                 }
             }
 
-            parts.push(`<text class="legend" x="${x0}" y="${y0 + h + 28}" text-anchor="start">Escala aproximada. Cuadrícula cada 50 cm.</text>`);
+            parts.push(`<text class="legend" x="${x0}" y="${y0 + h + 50}" text-anchor="start">Escala aproximada. Cuadrícula cada 50 cm.</text>`);
             parts.push('</svg>');
             
             return parts.join('');
@@ -1389,7 +1418,6 @@
             document.getElementById('wallB').value = '350';
             document.getElementById('wallC').value = '150';
             document.getElementById('wallD').value = '80';
-            document.getElementById('wallE').value = '350';
             document.getElementById('roomHeight').value = '250';
         }
 
@@ -1408,7 +1436,7 @@
             document.getElementById('whatsappForm').addEventListener('submit', handleWhatsAppRequest);
 
             // Actualizar vista previa en vivo al escribir
-            ['wallA','wallB','wallC','wallD','wallE','roomHeight'].forEach(id => {
+            ['wallA','wallB','wallC','wallD','roomHeight'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
                     el.addEventListener('input', updateLivePreview);
@@ -1468,12 +1496,13 @@
                 return;
             }
 
+            const B = parseFloat(formData.get('B'));
             const inputData = {
                 A: parseFloat(formData.get('A')),
-                B: parseFloat(formData.get('B')),
+                B: B,
                 C: parseFloat(formData.get('C')),
                 D: parseFloat(formData.get('D')),
-                E: parseFloat(formData.get('E')),
+                E: B,  // E usa el mismo valor que B
                 roomHeight: parseFloat(formData.get('roomHeight')),
                 shape: document.querySelector('input[name="shape"]:checked').value,
                 walls: selectedWalls
@@ -1535,12 +1564,13 @@
             const data = new FormData(formEl);
             const selectedWalls = getSelectedWalls();
             const shapeRadio = document.querySelector('input[name="shape"]:checked');
+            const B = safeParseFloat(data.get('B'), 300);
             return {
                 A: safeParseFloat(data.get('A'), 300),
-                B: safeParseFloat(data.get('B'), 300),
+                B: B,
                 C: safeParseFloat(data.get('C'), 150),
                 D: safeParseFloat(data.get('D'), 80),
-                E: safeParseFloat(data.get('E'), 300),
+                E: B,  // E usa el mismo valor que B
                 roomHeight: safeParseFloat(data.get('roomHeight'), 250),
                 shape: shapeRadio ? shapeRadio.value : 'L',
                 walls: selectedWalls.length ? selectedWalls : ['A','B']
@@ -1550,6 +1580,8 @@
         function renderSvgRoom(inputData) {
             const A = parseFloat(inputData.A);
             const B = parseFloat(inputData.B);
+            const C = parseFloat(inputData.C || 0);
+            const D = parseFloat(inputData.D || 0);
             const E = parseFloat(inputData.E);
             const walls = new Set(inputData.walls || []);
             const baseW = A > 0 ? A : 300;
@@ -1575,7 +1607,7 @@
             const marginLeft = Math.max(15, labelEWidth + 5);
             const marginRight = Math.max(15, labelBWidth + 5);
             const marginTop = 25;
-            const marginBottom = 35;
+            const marginBottom = 60;  // espacio para leyenda y etiquetas de muros C y D
             const minCanvasW = baseW + marginLeft + marginRight;
             const minCanvasH = baseH + marginTop + marginBottom;
             const minSize = 600;
@@ -1596,12 +1628,44 @@
                 `     xmlns="http://www.w3.org/2000/svg" text-rendering="optimizeLegibility">`
             );
             parts.push('<style> text { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill:#111; } .walllbl { font-size:12px; } </style>');
-            // Room rectangle
-            parts.push(`<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="none" stroke="#111" stroke-width="4" />`);
+            
+            // Room walls - draw each wall as a separate line
+            const strokeWidth = 4;
+            const strokeColor = "#111";
+            
+            // Muro A (top wall) - horizontal line from left to right
+            parts.push(`<line x1="${x0}" y1="${y0}" x2="${x0 + w}" y2="${y0}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            
+            // Muro E (left wall) - vertical line from top to bottom
+            parts.push(`<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            
+            // Muro B (right wall) - vertical line from top to bottom
+            parts.push(`<line x1="${x0 + w}" y1="${y0}" x2="${x0 + w}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            
+            // Muro D (bottom left) - horizontal line from E wall, length = D
+            if (D > 0) {
+                const dLength = D * s;
+                parts.push(`<line x1="${x0}" y1="${y0 + h}" x2="${x0 + dLength}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            }
+            
+            // Muro C (bottom right) - horizontal line from B wall towards left, length = C
+            if (C > 0) {
+                const cLength = C * s;
+                parts.push(`<line x1="${x0 + w - cLength}" y1="${y0 + h}" x2="${x0 + w}" y2="${y0 + h}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+            }
+            
             // Wall labels
             parts.push(`<text class="walllbl" x="${x0 + w/2}" y="${y0 - 10}" text-anchor="middle">A (${A} cm)</text>`);
             parts.push(`<text class="walllbl" x="${x0 + w + 10}" y="${y0 + h/2}" text-anchor="start">B (${B} cm)</text>`);
             parts.push(`<text class="walllbl" x="${x0 - 10}" y="${y0 + h/2}" text-anchor="end">E (${E} cm)</text>`);
+            if (C > 0) {
+                const cLength = C * s;
+                parts.push(`<text class="walllbl" x="${x0 + w - cLength/2}" y="${y0 + h + 20}" text-anchor="middle">C (${C} cm)</text>`);
+            }
+            if (D > 0) {
+                const dLength = D * s;
+                parts.push(`<text class="walllbl" x="${x0 + dLength/2}" y="${y0 + h + 20}" text-anchor="middle">D (${D} cm)</text>`);
+            }
             parts.push('</svg>');
             return parts.join('');
         }
@@ -1666,12 +1730,13 @@
             }
             
             // Crear payload para el webhook
+            const B = parseFloat(shelfFormData.get('B'));
             const payload = {
                 A: parseFloat(shelfFormData.get('A')),
-                B: parseFloat(shelfFormData.get('B')),
+                B: B,
                 C: parseFloat(shelfFormData.get('C')),
                 D: parseFloat(shelfFormData.get('D')),
-                E: parseFloat(shelfFormData.get('E')),
+                E: B,  // E usa el mismo valor que B
                 roomHeight: parseFloat(shelfFormData.get('roomHeight')),
                 walls: selectedWalls,
                 shape: shape,
@@ -1688,7 +1753,7 @@
             submitBtn.textContent = 'Enviando solicitud...';
             
             // Realizar la request POST al webhook
-            fetch("https://n8n.srv1030908.hstgr.cloud/webhook/cotizaciones/nueva", {
+            fetch("https://n8n.srv1135691.hstgr.cloud/webhook/cotizaciones/nueva", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
